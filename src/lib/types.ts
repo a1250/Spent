@@ -6,6 +6,45 @@ export interface Workspace {
   updatedAt: string;
 }
 
+// ── Financial intelligence enums ──────────────────────────────────────────────
+
+export type FinancialNature =
+  | "operating_income"
+  | "operating_expense"
+  | "working_capital"
+  | "internal_transfer"
+  | "owner_deposit"
+  | "owner_draw"
+  | "investment"
+  | "receivable_collection"
+  | "payable_payment"
+  | "loan_received"
+  | "loan_repayment"
+  | "tax"
+  | "unknown";
+
+export type CashFlowType =
+  | "real_cash_in"
+  | "real_cash_out"
+  | "internal_transfer"
+  | "non_cash"
+  | "pending"
+  | "unknown";
+
+export type PnlImpact = "yes" | "no" | "maybe";
+
+export type ClassificationStatus =
+  | "auto_classified"
+  | "needs_review"
+  | "manually_approved"
+  | "locked";
+
+export type BusinessUnit = "personal" | "business" | "investment";
+
+export type TransactionDirection = "income" | "expense" | "transfer" | "unknown";
+
+// ── Transaction ───────────────────────────────────────────────────────────────
+
 export interface Transaction {
   id: number;
   accountNumber: string;
@@ -31,6 +70,118 @@ export interface Transaction {
   syncRunId: number;
   kind: "expense" | "income" | "transfer";
   needsReview: boolean;
+  // Financial intelligence fields (added in migration 024)
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  classificationStatus: ClassificationStatus;
+  confidenceScore: number | null;
+  aiExplanation: string | null;
+  businessUnit: BusinessUnit | null;
+  counterparty: string | null;
+  cleanDescription: string | null;
+  originalBalance: number | null;
+  linkedTransactionId: number | null;
+  importBatchId: number | null;
+  importRowId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Import pipeline ───────────────────────────────────────────────────────────
+
+export type ImportBatchStatus =
+  | "pending"
+  | "mapped"
+  | "classified"
+  | "reviewing"
+  | "committed"
+  | "failed";
+
+export type ImportSourceType = "excel" | "csv";
+
+export interface ImportBatch {
+  id: number;
+  workspaceId: number;
+  sourceFilename: string;
+  sourceType: ImportSourceType;
+  columnMapping: Record<string, string> | null;
+  dateRangeStart: string | null;
+  dateRangeEnd: string | null;
+  totalRows: number;
+  importedRows: number;
+  skippedRows: number;
+  duplicateRows: number;
+  needsReviewRows: number;
+  status: ImportBatchStatus;
+  createdAt: string;
+  committedAt: string | null;
+}
+
+export type ImportRowStatus = "pending" | "approved" | "rejected" | "imported";
+
+export interface ImportRow {
+  id: number;
+  batchId: number;
+  workspaceId: number;
+  // Raw layer
+  rawRowNumber: number;
+  rawDate: string | null;
+  rawAmount: string | null;
+  rawDescription: string | null;
+  rawAccount: string | null;
+  rawBalance: string | null;
+  rawMetadata: Record<string, unknown> | null;
+  // Normalised layer
+  date: string | null;
+  amount: number | null;
+  direction: TransactionDirection | null;
+  account: string | null;
+  counterparty: string | null;
+  cleanDescription: string | null;
+  categoryId: number | null;
+  businessUnit: BusinessUnit | null;
+  // Classification layer
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  classificationStatus: ClassificationStatus;
+  confidenceScore: number | null;
+  aiExplanation: string | null;
+  // Dedup
+  dedupHash: string | null;
+  isDuplicate: boolean;
+  duplicateOfTransactionId: number | null;
+  // Pipeline
+  importStatus: ImportRowStatus;
+  transactionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Classification rules ──────────────────────────────────────────────────────
+
+export type RuleMatchField = "description" | "counterparty" | "account" | "amount_range";
+export type RuleMatchType = "exact" | "contains" | "starts_with" | "regex";
+export type RuleCreatedFrom = "seed" | "user" | "ai";
+
+export interface ClassificationRule {
+  id: number;
+  workspaceId: number;
+  matchField: RuleMatchField;
+  matchType: RuleMatchType;
+  matchValue: string;
+  financialNature: FinancialNature | null;
+  cashFlowType: CashFlowType | null;
+  pnlImpact: PnlImpact | null;
+  categoryId: number | null;
+  direction: TransactionDirection | null;
+  businessUnit: BusinessUnit | null;
+  priority: number;
+  timesApplied: number;
+  confidenceBoost: number;
+  isActive: boolean;
+  createdFrom: RuleCreatedFrom;
   createdAt: string;
   updatedAt: string;
 }

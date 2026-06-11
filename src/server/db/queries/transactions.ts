@@ -569,6 +569,20 @@ interface TransactionRow {
   kind: string;
   needs_review: number;
   is_excluded: number;
+  // Financial intelligence (migration 024, always present after migration runs)
+  financial_nature: string;
+  cash_flow_type: string;
+  pnl_impact: string;
+  classification_status: string;
+  confidence_score: number | null;
+  ai_explanation: string | null;
+  business_unit: string | null;
+  counterparty: string | null;
+  clean_description: string | null;
+  original_balance: number | null;
+  linked_transaction_id: number | null;
+  import_batch_id: number | null;
+  import_row_id: number | null;
   created_at: string;
   updated_at: string;
   category_name?: string | null;
@@ -604,6 +618,19 @@ function mapTransactionRow(row: unknown): TransactionWithCategory {
     kind: r.kind as "expense" | "income" | "transfer",
     needsReview: r.needs_review === 1,
     isExcluded: r.is_excluded === 1,
+    financialNature: (r.financial_nature ?? "unknown") as import("@/lib/types").FinancialNature,
+    cashFlowType: (r.cash_flow_type ?? "unknown") as import("@/lib/types").CashFlowType,
+    pnlImpact: (r.pnl_impact ?? "maybe") as import("@/lib/types").PnlImpact,
+    classificationStatus: (r.classification_status ?? "auto_classified") as import("@/lib/types").ClassificationStatus,
+    confidenceScore: r.confidence_score ?? null,
+    aiExplanation: r.ai_explanation ?? null,
+    businessUnit: (r.business_unit ?? null) as import("@/lib/types").BusinessUnit | null,
+    counterparty: r.counterparty ?? null,
+    cleanDescription: r.clean_description ?? null,
+    originalBalance: r.original_balance ?? null,
+    linkedTransactionId: r.linked_transaction_id ?? null,
+    importBatchId: r.import_batch_id ?? null,
+    importRowId: r.import_row_id ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     categoryName: r.category_name ?? null,

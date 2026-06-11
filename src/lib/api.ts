@@ -11,6 +11,12 @@ import type {
   Workspace,
   HomePayload,
   ActivitySnapshot,
+  ImportBatch,
+  ImportRow,
+  FinancialNature,
+  PnlImpact,
+  ClassificationStatus,
+  BusinessUnit,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -674,4 +680,71 @@ export function pullOllamaModel(
   })();
 
   return { cancel: () => controller.abort() };
+}
+
+// ── Import API ────────────────────────────────────────────────────────────────
+
+export interface ImportUploadResult {
+  batch: ImportBatch;
+  summary: {
+    totalRows: number;
+    autoClassified: number;
+    needsReview: number;
+    duplicates: number;
+    skipped: number;
+  };
+}
+
+export function uploadImportFile(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return fetchJSON<ImportUploadResult>("/api/import", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function listImportBatches() {
+  return fetchJSON<{ batches: ImportBatch[] }>("/api/import");
+}
+
+export function getImportBatch(batchId: number) {
+  return fetchJSON<{ batch: ImportBatch; rows: ImportRow[] }>(
+    `/api/import/${batchId}`
+  );
+}
+
+export function commitImportBatch(batchId: number) {
+  return fetchJSON<{ inserted: number; skipped: number; batchId: number }>(
+    `/api/import/${batchId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "commit" }),
+    }
+  );
+}
+
+export interface ImportRowPatch {
+  financialNature?: FinancialNature;
+  pnlImpact?: PnlImpact;
+  classificationStatus?: ClassificationStatus;
+  businessUnit?: BusinessUnit | null;
+  notes?: string | null;
+  categoryId?: number | null;
+}
+
+export function patchImportRow(
+  batchId: number,
+  rowId: number,
+  patch: ImportRowPatch
+) {
+  return fetchJSON<{ success: boolean }>(
+    `/api/import/${batchId}/rows/${rowId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  );
 }

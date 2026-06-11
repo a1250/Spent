@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Wallet,
   ArrowLeftRight,
+  Upload,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -49,6 +50,12 @@ const NAV: NavDef[] = [
     labelKey: "transactions",
     Icon: ArrowLeftRight,
     match: (p: string) => p.startsWith("/transactions"),
+  },
+  {
+    href: "/import",
+    labelKey: "import",
+    Icon: Upload,
+    match: (p: string) => p.startsWith("/import"),
   },
 ];
 

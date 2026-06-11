@@ -7,7 +7,10 @@
  *
  * Confidence starts at 0 and accumulates confidence_boost from every
  * matching rule.  A row reaching >= CONFIDENCE_THRESHOLD is marked
- * 'auto_classified'; otherwise 'needs_review'.
+ * 'auto_classified' ONLY when at least one matched rule was user-created
+ * (createdFrom === 'user').  Seed/legacy rules accumulate confidence as a
+ * suggestion but can never promote a row to 'auto_classified' on their own —
+ * those rows stay 'needs_review' regardless of how many seed rules match.
  *
  * The engine is pure (no DB calls) — callers load the rule list once and
  * pass it in, so bulk imports don't re-query for every row.
@@ -97,6 +100,8 @@ export interface ClassificationResult {
   classificationStatus: ClassificationStatus;
   confidenceScore: number;
   matchedRuleIds: number[];
+  /** True when at least one matched rule was created by a human (createdFrom='user'). */
+  hasUserApprovedRule: boolean;
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -118,6 +123,7 @@ export function classifyRow(
   let direction: TransactionDirection = row.direction ?? "unknown";
   let businessUnit: BusinessUnit | null = null;
   let confidence = 0;
+  let hasUserApprovedRule = false;
   const matchedRuleIds: number[] = [];
 
   for (const rule of rules) {
@@ -137,6 +143,10 @@ export function classifyRow(
       businessUnit = rule.businessUnit;
     }
 
+    if (rule.createdFrom === "user") {
+      hasUserApprovedRule = true;
+    }
+
     confidence = Math.min(1, confidence + rule.confidenceBoost);
     matchedRuleIds.push(rule.id);
 
@@ -146,8 +156,14 @@ export function classifyRow(
 
   const cashFlowType = deriveCashFlowType(financialNature, direction);
 
+  // auto_classified requires BOTH:
+  //   1. confidence >= threshold
+  //   2. at least one user-created rule matched
+  // Seed/legacy rules alone can never promote a row to auto_classified.
   const classificationStatus: ClassificationStatus =
-    confidence >= CONFIDENCE_THRESHOLD ? "auto_classified" : "needs_review";
+    confidence >= CONFIDENCE_THRESHOLD && hasUserApprovedRule
+      ? "auto_classified"
+      : "needs_review";
 
   return {
     financialNature,
@@ -158,6 +174,7 @@ export function classifyRow(
     classificationStatus,
     confidenceScore: Math.round(confidence * 100) / 100,
     matchedRuleIds,
+    hasUserApprovedRule,
   };
 }
 

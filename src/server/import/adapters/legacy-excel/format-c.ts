@@ -185,9 +185,15 @@ export function isFormatC(wb: XLSX.WorkBook): boolean {
 /**
  * Parses both transaction sheets from a Format-C workbook.
  * Throws if the required sheets are missing.
+ *
+ * Uses XLSX.read(buffer) instead of XLSX.readFile() to avoid the xlsx library's
+ * own fs access, which fails when bundled by Next.js/Turbopack.
  */
 export function parseFormatC(filePath: string): FormatCParseResult {
-  const wb = XLSX.readFile(filePath, { cellDates: false });
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fsSync = require("fs") as typeof import("fs");
+  const buf = fsSync.readFileSync(filePath);
+  const wb = XLSX.read(buf, { cellDates: false, type: "buffer" });
 
   if (!isFormatC(wb)) {
     throw new Error(

@@ -149,7 +149,9 @@ export function seedClassificationRulesFromExcel(
   filePath: string,
   workspaceId: number
 ): SeedResult {
-  const wb = XLSX.readFile(filePath, { cellDates: false });
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fsSync = require("fs") as typeof import("fs");
+  const wb = XLSX.read(fsSync.readFileSync(filePath), { cellDates: false, type: "buffer" });
 
   const incomeSheet = wb.Sheets["אינדקס הכנסות"];
   const expenseSheet = wb.Sheets["אינדקס הוצאות"];

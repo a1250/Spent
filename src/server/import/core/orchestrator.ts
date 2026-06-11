@@ -25,8 +25,9 @@ import {
   commitImportRow,
   listImportRows,
 } from "@/server/db/queries/import-rows";
-import { getActiveRulesForEngine } from "@/server/db/queries/classification-rules";
+import { getActiveRulesForEngine, countSeedRules } from "@/server/db/queries/classification-rules";
 import { parseFormatC, isFormatC } from "@/server/import/adapters/legacy-excel/format-c";
+import { seedClassificationRulesFromExcel } from "@/server/import/adapters/legacy-excel/index-seeder";
 import { normalise } from "./normalizer";
 import { computeDedupHash, checkDuplicate } from "./dedup";
 import { classifyRow } from "./rules-engine";
@@ -59,12 +60,25 @@ export async function parseAndStageFile(
   const filename = path.basename(filePath);
   const sourceType = detectSourceType(filePath);
 
-  // Detect format
-  const wb = XLSX.readFile(filePath, { cellDates: false });
+  // Detect format — use XLSX.read(buffer) to avoid xlsx's own fs access
+  // which fails when bundled by Next.js/Turbopack
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fsSync = require("fs") as typeof import("fs");
+  const wb = XLSX.read(fsSync.readFileSync(filePath), { cellDates: false, type: "buffer" });
   if (!isFormatC(wb)) {
     throw new Error(
       "Unsupported file format. Only Format-C Excel files (with הכנסות / הוצאות sheets) are supported in Phase 1."
     );
+  }
+
+  // Auto-seed classification rules from the index sheets (idempotent: INSERT OR IGNORE).
+  // Do this before parsing so the rules engine has rules to evaluate against.
+  const hasIndexSheets =
+    wb.SheetNames.includes("אינדקס הכנסות") &&
+    wb.SheetNames.includes("אינדקס הוצאות");
+
+  if (hasIndexSheets && countSeedRules(workspaceId) === 0) {
+    seedClassificationRulesFromExcel(filePath, workspaceId);
   }
 
   // Create batch record

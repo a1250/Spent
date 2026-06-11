@@ -76,16 +76,13 @@ export function updateImportBatchStatus(
   batchId: number,
   status: ImportBatchStatus
 ): void {
-  const committedAt = status === "committed" ? "datetime('now')" : "committed_at";
   getDb()
     .prepare(
       `UPDATE import_batches
-       SET status = ?, committed_at = ${status === "committed" ? "datetime('now')" : "committed_at"},
-           updated_at = datetime('now')
+       SET status = ?, committed_at = ${status === "committed" ? "datetime('now')" : "committed_at"}
        WHERE workspace_id = ? AND id = ?`
     )
     .run(status, workspaceId, batchId);
-  void committedAt;
 }
 
 export function updateImportBatchMapping(

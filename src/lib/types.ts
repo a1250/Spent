@@ -155,6 +155,11 @@ export interface ImportRow {
   // Pipeline
   importStatus: ImportRowStatus;
   transactionId: number | null;
+  // Legacy Excel fields (null for non-Excel sources)
+  legacyCategory: string | null;
+  legacyRuleCategory: string | null;
+  sourceSheetName: string | null;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }

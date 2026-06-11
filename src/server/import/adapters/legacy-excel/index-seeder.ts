@@ -184,7 +184,7 @@ export function seedClassificationRulesFromExcel(
     pnlImpact: r.pnlImpact,
     direction: r.direction,
     priority: 100,
-    confidenceBoost: 0.85,
+    confidenceBoost: 0.45,
   }));
 
   const inserted = bulkInsertSeedRules(workspaceId, rulesPayload);

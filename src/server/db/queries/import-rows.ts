@@ -40,6 +40,10 @@ const ROW_COLUMNS = `
   r.duplicate_of_transaction_id as duplicateOfTransactionId,
   r.import_status         as importStatus,
   r.transaction_id        as transactionId,
+  r.legacy_category       as legacyCategory,
+  r.legacy_rule_category  as legacyRuleCategory,
+  r.source_sheet_name     as sourceSheetName,
+  r.notes,
   r.created_at            as createdAt,
   r.updated_at            as updatedAt
 `.trim();
@@ -65,6 +69,9 @@ export function insertImportRow(
     rawAccount?: string | null;
     rawBalance?: string | null;
     rawMetadata?: Record<string, unknown> | null;
+    legacyCategory?: string | null;
+    legacyRuleCategory?: string | null;
+    sourceSheetName?: string | null;
   }
 ): ImportRow {
   const row = getDb()
@@ -72,8 +79,9 @@ export function insertImportRow(
       `INSERT INTO import_rows (
          batch_id, workspace_id,
          raw_row_number, raw_date, raw_amount, raw_description,
-         raw_account, raw_balance, raw_metadata
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         raw_account, raw_balance, raw_metadata,
+         legacy_category, legacy_rule_category, source_sheet_name
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING ${ROW_COLUMNS.replace(/r\./g, "")}`
     )
     .get(
@@ -85,9 +93,24 @@ export function insertImportRow(
       data.rawDescription ?? null,
       data.rawAccount ?? null,
       data.rawBalance ?? null,
-      data.rawMetadata ? JSON.stringify(data.rawMetadata) : null
+      data.rawMetadata ? JSON.stringify(data.rawMetadata) : null,
+      data.legacyCategory ?? null,
+      data.legacyRuleCategory ?? null,
+      data.sourceSheetName ?? null
     ) as Record<string, unknown>;
   return hydrate(row);
+}
+
+export function updateImportRowNotes(
+  workspaceId: number,
+  rowId: number,
+  notes: string | null
+): void {
+  getDb()
+    .prepare(
+      `UPDATE import_rows SET notes = ?, updated_at = datetime('now') WHERE workspace_id = ? AND id = ?`
+    )
+    .run(notes, workspaceId, rowId);
 }
 
 export function listImportRows(

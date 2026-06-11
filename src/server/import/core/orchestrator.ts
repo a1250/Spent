@@ -259,11 +259,11 @@ export async function commitBatch(
   const syncRunId = (
     db
       .prepare(
-        `INSERT INTO sync_runs (provider, started_at, completed_at, status, scrape_from_date)
-         VALUES ('legacy_import', datetime('now'), datetime('now'), 'completed', ?)
+        `INSERT INTO sync_runs (workspace_id, provider, started_at, completed_at, status, scrape_from_date)
+         VALUES (?, 'legacy_import', datetime('now'), datetime('now'), 'completed', ?)
          RETURNING id`
       )
-      .get(dateRange.min ?? "2000-01-01") as { id: number }
+      .get(workspaceId, dateRange.min ?? "2000-01-01") as { id: number }
   ).id;
 
   let inserted = 0;

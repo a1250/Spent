@@ -7,9 +7,11 @@ import {
   getImportRow,
 } from "@/server/db/queries/import-rows";
 import {
+  importPendingRow,
   reviewDuplicateRow,
   type DuplicateReviewAction,
 } from "@/server/import/core/orchestrator";
+import { saveUserClassificationRule } from "@/server/db/queries/classification-rules";
 import type {
   FinancialNature,
   PnlImpact,
@@ -50,6 +52,8 @@ export async function PATCH(
       notes?: string | null;
       categoryId?: number | null;
       duplicateAction?: DuplicateReviewAction;
+      pendingAction?: "import_pending";
+      saveAsRule?: boolean;
     };
 
     if (body.duplicateAction) {
@@ -69,6 +73,17 @@ export async function PATCH(
         workspaceId,
         body.duplicateAction
       );
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    if (body.pendingAction) {
+      if (body.pendingAction !== "import_pending") {
+        return NextResponse.json(
+          { error: "Invalid pending action" },
+          { status: 400 }
+        );
+      }
+      const result = importPendingRow(batchId, rowId, workspaceId);
       return NextResponse.json({ success: true, ...result });
     }
 
@@ -94,6 +109,36 @@ export async function PATCH(
     // Notes
     if ("notes" in body) {
       updateImportRowNotes(workspaceId, rowId, body.notes ?? null);
+    }
+
+    if (body.saveAsRule) {
+      const updatedRow = getImportRow(workspaceId, rowId);
+      if (!updatedRow) {
+        return NextResponse.json({ error: "Row not found" }, { status: 404 });
+      }
+      const matchValue = (
+        updatedRow.counterparty ??
+        updatedRow.cleanDescription ??
+        ""
+      ).trim();
+      if (!matchValue) {
+        return NextResponse.json(
+          { error: "Cannot save a rule without a merchant or description" },
+          { status: 400 }
+        );
+      }
+      saveUserClassificationRule(workspaceId, {
+        matchField: updatedRow.counterparty
+          ? "counterparty"
+          : "description",
+        matchValue,
+        financialNature: updatedRow.financialNature,
+        cashFlowType: updatedRow.cashFlowType,
+        pnlImpact: updatedRow.pnlImpact,
+        categoryId: updatedRow.categoryId,
+        direction: updatedRow.direction,
+        businessUnit: updatedRow.businessUnit,
+      });
     }
 
     return NextResponse.json({ success: true });

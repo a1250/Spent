@@ -14,6 +14,7 @@ import {
   Copy,
   Ban,
   PlusCircle,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -36,6 +38,7 @@ import {
   listImportBatches,
   getImportBatch,
   commitImportBatch,
+  getCategories,
   patchImportRow,
   type ImportUploadResult,
   type ImportRowPatch,
@@ -45,6 +48,7 @@ import type {
   ImportRow,
   FinancialNature,
   PnlImpact,
+  BusinessUnit,
 } from "@/lib/types";
 
 // ── Financial nature labels ───────────────────────────────────────────────────
@@ -52,6 +56,7 @@ import type {
 const FINANCIAL_NATURE_LABELS: Record<FinancialNature, string> = {
   operating_income: "הכנסה תפעולית",
   operating_expense: "הוצאה תפעולית",
+  refund: "זיכוי / החזר",
   working_capital: "הון חוזר",
   investment: "השקעה",
   internal_transfer: "העברה פנימית",
@@ -69,6 +74,18 @@ const PNL_LABELS: Record<PnlImpact, string> = {
   yes: "כן",
   no: "לא",
   maybe: "אולי",
+};
+
+const BUSINESS_UNIT_LABELS: Record<BusinessUnit, string> = {
+  personal: "אישי",
+  business: "עסקי",
+  investment: "השקעות",
+};
+
+const ADAPTER_LABELS: Record<ImportBatch["adapterKey"], string> = {
+  "legacy-excel": "Legacy Excel",
+  "credit-card-isracard": "Isracard",
+  "credit-card-cal": "CAL",
 };
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -120,7 +137,19 @@ function EditRowDialog({
     row.financialNature
   );
   const [pnlImpact, setPnlImpact] = useState<PnlImpact>(row.pnlImpact);
+  const [categoryId, setCategoryId] = useState(
+    row.categoryId == null ? "none" : String(row.categoryId)
+  );
+  const [businessUnit, setBusinessUnit] = useState<BusinessUnit | "none">(
+    row.businessUnit ?? "none"
+  );
   const [notes, setNotes] = useState(row.notes ?? "");
+  const [saveAsRule, setSaveAsRule] = useState(false);
+  const categoryKind = row.direction === "income" ? "income" : "expense";
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories", categoryKind],
+    queryFn: () => getCategories(categoryKind, { leavesOnly: true }),
+  });
 
   const mutation = useMutation({
     mutationFn: (patch: ImportRowPatch) =>
@@ -140,7 +169,10 @@ function EditRowDialog({
       financialNature,
       pnlImpact,
       classificationStatus: "manually_approved",
+      categoryId: categoryId === "none" ? null : Number(categoryId),
+      businessUnit: businessUnit === "none" ? null : businessUnit,
       notes: notes || null,
+      saveAsRule,
     });
   };
 
@@ -156,12 +188,12 @@ function EditRowDialog({
           <div className="text-xs text-muted-foreground">
             {row.date} · ₪{row.amount?.toLocaleString("he-IL", { minimumFractionDigits: 2 })}
           </div>
-          {row.legacyCategory && (
+          {(row.sourceCategory || row.legacyCategory) && (
             <div className="mt-1 flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
               <AlertCircle className="h-3 w-3 shrink-0" />
               <span>
-                <span className="font-medium">קטגוריה מקורית מהאקסל:</span>{" "}
-                {row.legacyCategory}
+                <span className="font-medium">קטגוריית מקור:</span>{" "}
+                {row.sourceCategory ?? row.legacyCategory}
                 {row.legacyRuleCategory && row.legacyRuleCategory !== row.legacyCategory
                   ? ` (כלל: ${row.legacyRuleCategory})`
                   : ""}
@@ -208,12 +240,72 @@ function EditRowDialog({
           </div>
 
           <div className="space-y-1.5">
+            <Label>קטגוריה</Label>
+            <Select
+              value={categoryId}
+              onValueChange={(value) => {
+                if (value) setCategoryId(value);
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="ללא קטגוריה" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">ללא קטגוריה</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>יחידה עסקית</Label>
+            <Select
+              value={businessUnit}
+              onValueChange={(value) => {
+                if (value) {
+                  setBusinessUnit(value as BusinessUnit | "none");
+                }
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">לא הוגדר</SelectItem>
+                {Object.entries(BUSINESS_UNIT_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
             <Label>הערות</Label>
             <Input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="הוסף הערה אופציונלית..."
               className="h-9"
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+            <div>
+              <Label htmlFor={`save-rule-${row.id}`}>שמור ככלל עתידי</Label>
+              <p className="text-xs text-muted-foreground">
+                רק כלל שאושר כאן יוכל לסווג שורות אשראי אוטומטית
+              </p>
+            </div>
+            <Switch
+              id={`save-rule-${row.id}`}
+              checked={saveAsRule}
+              onCheckedChange={setSaveAsRule}
             />
           </div>
         </div>
@@ -245,14 +337,17 @@ function EditRowDialog({
 function SummaryCards({
   result,
   batch,
+  pendingCount,
 }: {
   result: ImportUploadResult["summary"];
   batch: ImportBatch;
+  pendingCount: number;
 }) {
   const cards = [
     { label: "שורות", value: result.totalRows, color: "text-foreground" },
     { label: "סווגו אוטומטית", value: result.autoClassified, color: "text-blue-600 dark:text-blue-400" },
     { label: "דורשות בדיקה", value: result.needsReview, color: "text-amber-600 dark:text-amber-400" },
+    { label: "ממתינות לחיוב", value: pendingCount, color: "text-violet-600 dark:text-violet-400" },
     { label: "כפולות", value: result.duplicates, color: "text-muted-foreground" },
     { label: "דולגו", value: result.skipped, color: "text-muted-foreground" },
   ];
@@ -262,11 +357,14 @@ function SummaryCards({
       <div className="mb-3 flex items-center gap-2">
         <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">{batch.sourceFilename}</span>
+        <Badge variant="outline" className="text-xs">
+          {ADAPTER_LABELS[batch.adapterKey]}
+        </Badge>
         <Badge variant="secondary" className="ms-auto text-xs">
           {batch.status}
         </Badge>
       </div>
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {cards.map((c) => (
           <div key={c.label} className="space-y-0.5 text-center">
             <div className={`text-2xl font-semibold tabular-nums ${c.color}`}>
@@ -287,12 +385,10 @@ type RowFilter = "all" | "needs_review";
 function ReviewTable({
   rows,
   batchId,
-  committed,
   onRowUpdated,
 }: {
   rows: ImportRow[];
   batchId: number;
-  committed: boolean;
   onRowUpdated: () => void;
 }) {
   const [filter, setFilter] = useState<RowFilter>("all");
@@ -305,6 +401,9 @@ function ReviewTable({
   const needsReviewCount = rows.filter(
     (r) => r.classificationStatus === "needs_review" && !r.isDuplicate
   ).length;
+  const hasEditableRows = rows.some(
+    (row) => !row.isDuplicate && row.importStatus === "pending"
+  );
 
   return (
     <div className="space-y-3">
@@ -335,10 +434,10 @@ function ReviewTable({
               <th className="px-3 py-2 text-end font-medium">סכום</th>
               <th className="px-3 py-2 text-start font-medium">
                 <span className="flex items-center gap-1">
-                  קטגוריה מקורית
+                  קטגוריית מקור
                   <span
                     className="cursor-help text-amber-500"
-                    title="קטגוריה מהאקסל הישן — לא הסיווג הסופי"
+                    title="קטגוריה מהספק או מהאקסל הישן — לא הסיווג הסופי"
                   >
                     ⚠
                   </span>
@@ -347,7 +446,7 @@ function ReviewTable({
               <th className="px-3 py-2 text-start font-medium">סיווג פיננסי</th>
               <th className="px-3 py-2 text-center font-medium">P&L</th>
               <th className="px-3 py-2 text-start font-medium">סטטוס</th>
-              {!committed && <th className="px-3 py-2" />}
+              {hasEditableRows && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -361,7 +460,12 @@ function ReviewTable({
                 }`}
               >
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-muted-foreground">
-                  {row.date}
+                  <div>{row.date}</div>
+                  {row.billingDate && (
+                    <div className="mt-0.5 text-[10px]">
+                      חיוב: {row.billingDate}
+                    </div>
+                  )}
                 </td>
                 <td className="max-w-[220px] px-3 py-2">
                   <div className="truncate font-medium" title={row.cleanDescription ?? undefined}>
@@ -372,6 +476,12 @@ function ReviewTable({
                       {row.notes}
                     </div>
                   )}
+                  {row.cardLast4 && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      כרטיס •••• {row.cardLast4}
+                      {row.transactionType ? ` · ${row.transactionType}` : ""}
+                    </div>
+                  )}
                 </td>
                 <td
                   className={`whitespace-nowrap px-3 py-2 text-end font-mono tabular-nums ${
@@ -380,16 +490,27 @@ function ReviewTable({
                       : "text-foreground"
                   }`}
                 >
-                  {row.direction === "income" ? "+" : "-"}₪
+                  {row.direction === "income" ? "+" : "-"}
+                  {row.currency === "ILS" || !row.currency
+                    ? "₪"
+                    : `${row.currency} `}
                   {row.amount?.toLocaleString("he-IL", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
+                  {row.originalCurrency &&
+                    row.originalAmount != null &&
+                    row.originalCurrency !== row.currency && (
+                      <div className="text-[10px] text-muted-foreground">
+                        מקור: {row.originalAmount.toLocaleString("he-IL")}{" "}
+                        {row.originalCurrency}
+                      </div>
+                    )}
                 </td>
                 <td className="px-3 py-2">
-                  {row.legacyCategory ? (
+                  {row.sourceCategory || row.legacyCategory ? (
                     <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-400">
-                      {row.legacyCategory}
+                      {row.sourceCategory ?? row.legacyCategory}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
@@ -414,18 +535,30 @@ function ReviewTable({
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  <StatusBadge status={row.classificationStatus} />
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusBadge status={row.classificationStatus} />
+                    {row.transactionStatus === "pending" && (
+                      <Badge
+                        variant="outline"
+                        className="border-violet-500/40 text-violet-600 dark:text-violet-400"
+                      >
+                        ממתינה לחיוב
+                      </Badge>
+                    )}
+                  </div>
                 </td>
-                {!committed && (
+                {hasEditableRows && (
                   <td className="px-3 py-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
-                      onClick={() => setEditRow(row)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
+                    {row.importStatus === "pending" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setEditRow(row)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </td>
                 )}
               </tr>
@@ -440,7 +573,7 @@ function ReviewTable({
         )}
       </div>
 
-      {editRow && !committed && (
+      {editRow && (
         <EditRowDialog
           key={editRow.id}
           row={editRow}
@@ -451,6 +584,121 @@ function ReviewTable({
         />
       )}
     </div>
+  );
+}
+
+function PendingTransactionsTable({
+  rows,
+  batchId,
+  onRowUpdated,
+}: {
+  rows: ImportRow[];
+  batchId: number;
+  onRowUpdated: () => void;
+}) {
+  const [pendingRowId, setPendingRowId] = useState<number | null>(null);
+  const pendingRows = rows.filter(
+    (row) => row.transactionStatus === "pending" && !row.isDuplicate
+  );
+  const mutation = useMutation({
+    mutationFn: (rowId: number) =>
+      patchImportRow(batchId, rowId, { pendingAction: "import_pending" }),
+    onMutate: setPendingRowId,
+    onSuccess: () => {
+      toast.success("העסקה הממתינה יובאה כ-pending");
+      onRowUpdated();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "שגיאה בייבוא העסקה הממתינה"
+      );
+    },
+    onSettled: () => setPendingRowId(null),
+  });
+
+  if (pendingRows.length === 0) return null;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <CreditCard className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+        <div>
+          <h3 className="font-medium">
+            עסקאות אשראי ממתינות ({pendingRows.length})
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            commit רגיל אינו מכניס אותן להוצאות. הייבוא מתבצע רק בפעולה מפורשת.
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-violet-500/30">
+        <table className="w-full min-w-[880px] text-sm">
+          <thead>
+            <tr className="border-b bg-violet-500/5 text-xs text-muted-foreground">
+              <th className="px-3 py-2 text-start font-medium">שורת מקור</th>
+              <th className="px-3 py-2 text-start font-medium">תאריך</th>
+              <th className="px-3 py-2 text-start font-medium">בית עסק</th>
+              <th className="px-3 py-2 text-end font-medium">סכום</th>
+              <th className="px-3 py-2 text-start font-medium">כרטיס</th>
+              <th className="px-3 py-2 text-start font-medium">Audit status</th>
+              <th className="px-3 py-2 text-start font-medium">פעולה</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pendingRows.map((row) => (
+              <tr key={row.id} className="border-b last:border-0">
+                <td className="px-3 py-2 font-mono text-xs">
+                  {row.rawRowNumber}
+                </td>
+                <td className="px-3 py-2 font-mono text-xs">{row.date}</td>
+                <td className="max-w-[280px] px-3 py-2">
+                  <div className="truncate">
+                    {row.counterparty ??
+                      row.cleanDescription ??
+                      row.rawDescription}
+                  </div>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-end font-mono">
+                  -{row.currency === "ILS" || !row.currency
+                    ? "₪"
+                    : `${row.currency} `}
+                  {row.amount?.toLocaleString("he-IL", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </td>
+                <td className="px-3 py-2 font-mono text-xs">
+                  {row.cardLast4 ? `•••• ${row.cardLast4}` : "—"}
+                </td>
+                <td className="px-3 py-2">
+                  <Badge variant="secondary">{row.importStatus}</Badge>
+                </td>
+                <td className="px-3 py-2">
+                  {row.importStatus === "pending" ? (
+                    <Button
+                      size="sm"
+                      disabled={pendingRowId === row.id}
+                      onClick={() => mutation.mutate(row.id)}
+                    >
+                      {pendingRowId === row.id
+                        ? "מייבא..."
+                        : "Import pending"}
+                    </Button>
+                  ) : row.importStatus === "imported" ? (
+                    <Badge variant="outline">
+                      transaction #{row.transactionId}
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">{row.importStatus}</Badge>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -705,7 +953,7 @@ function UploadZone({
                 או לחץ לבחירת קובץ
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Format C בלבד: חייב להכיל גיליונות &quot;הכנסות&quot; ו-&quot;הוצאות&quot;
+                Legacy Excel, Isracard או CAL. הפורמט מזוהה אוטומטית.
               </p>
             </div>
           </>
@@ -766,7 +1014,7 @@ function BatchHistoryList({
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {new Date(b.createdAt).toLocaleDateString("he-IL")} ·{" "}
-                  {b.totalRows} שורות
+                  {b.totalRows} שורות · {ADAPTER_LABELS[b.adapterKey]}
                 </div>
               </div>
               <Badge
@@ -809,7 +1057,11 @@ function ReviewView({
   const commitMutation = useMutation({
     mutationFn: () => commitImportBatch(initialBatch.id),
     onSuccess: (result) => {
-      toast.success(`יובאו ${result.inserted} תנועות בהצלחה`);
+      toast.success(
+        result.pending > 0
+          ? `יובאו ${result.inserted} תנועות; ${result.pending} עסקאות pending נשארו לבדיקה`
+          : `יובאו ${result.inserted} תנועות בהצלחה`
+      );
       setCommitted(true);
       void queryClient.invalidateQueries({ queryKey: ["transactions"] });
       void queryClient.invalidateQueries({ queryKey: ["home"] });
@@ -825,6 +1077,9 @@ function ReviewView({
   const needsReviewCount = rows.filter(
     (r) => r.classificationStatus === "needs_review" && !r.isDuplicate
   ).length;
+  const pendingCount = rows.filter(
+    (row) => row.transactionStatus === "pending" && !row.isDuplicate
+  ).length;
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -838,7 +1093,11 @@ function ReviewView({
         </h2>
       </div>
 
-      <SummaryCards result={initialSummary} batch={data.batch} />
+      <SummaryCards
+        result={initialSummary}
+        batch={data.batch}
+        pendingCount={pendingCount}
+      />
 
       {!committed && (
         <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
@@ -846,6 +1105,12 @@ function ReviewView({
             <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
               <AlertCircle className="h-4 w-4" />
               <span>{needsReviewCount} שורות דורשות בדיקה — מומלץ לעיין בהן לפני האישור</span>
+            </div>
+          )}
+          {pendingCount > 0 && (
+            <div className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-400">
+              <CreditCard className="h-4 w-4" />
+              <span>{pendingCount} עסקאות ממתינות יישארו מחוץ ל-transactions</span>
             </div>
           )}
           <div className="ms-auto">
@@ -864,8 +1129,18 @@ function ReviewView({
       <ReviewTable
         rows={rows}
         batchId={initialBatch.id}
-        committed={committed}
         onRowUpdated={() => { void refetch(); }}
+      />
+
+      <PendingTransactionsTable
+        rows={rows}
+        batchId={initialBatch.id}
+        onRowUpdated={() => {
+          void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          void queryClient.invalidateQueries({ queryKey: ["home"] });
+          void queryClient.invalidateQueries({ queryKey: ["import-batches"] });
+          void refetch();
+        }}
       />
 
       <PotentialDuplicatesTable

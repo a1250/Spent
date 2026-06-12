@@ -17,13 +17,15 @@ export function computeDedupHash(
   date: string,
   amount: number,
   cleanDescription: string,
-  direction: string
+  direction: string,
+  sourceIdentity: string[] = []
 ): string {
   const canonical = [
     date,
     amount.toFixed(2),
     cleanDescription.toLowerCase().trim(),
     direction,
+    ...sourceIdentity.map((value) => value.toLowerCase().trim()),
   ].join("|");
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }

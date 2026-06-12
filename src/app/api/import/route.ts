@@ -5,6 +5,7 @@ import os from "os";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import { parseAndStageFile } from "@/server/import/core/orchestrator";
 import { listImportBatches } from "@/server/db/queries/import-batches";
+import { ImportDetectionError } from "@/server/import/adapters/detector";
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     writeFileSync(tmpPath, buffer);
 
-    const result = await parseAndStageFile(tmpPath, workspaceId);
+    const result = await parseAndStageFile(tmpPath, workspaceId, file.name);
 
     return NextResponse.json({
       batch: result.batch,
@@ -40,9 +41,20 @@ export async function POST(request: Request) {
         needsReview: result.needsReview,
         duplicates: result.duplicates,
         skipped: result.skipped,
+        pending: result.pending,
       },
     });
   } catch (err) {
+    if (err instanceof ImportDetectionError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          profileHint: err.profileHint,
+        },
+        { status: 422 }
+      );
+    }
     const message = err instanceof Error ? err.message : "Import failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }

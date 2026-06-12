@@ -195,6 +195,10 @@ export function parseFormatC(filePath: string): FormatCParseResult {
   const buf = fsSync.readFileSync(filePath);
   const wb = XLSX.read(buf, { cellDates: false, type: "buffer" });
 
+  return parseFormatCWorkbook(wb);
+}
+
+export function parseFormatCWorkbook(wb: XLSX.WorkBook): FormatCParseResult {
   if (!isFormatC(wb)) {
     throw new Error(
       'Format C requires sheets "הכנסות" and "הוצאות" — workbook does not match'

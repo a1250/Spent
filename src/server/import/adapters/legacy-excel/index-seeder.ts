@@ -153,6 +153,13 @@ export function seedClassificationRulesFromExcel(
   const fsSync = require("fs") as typeof import("fs");
   const wb = XLSX.read(fsSync.readFileSync(filePath), { cellDates: false, type: "buffer" });
 
+  return seedClassificationRulesFromWorkbook(wb, workspaceId);
+}
+
+export function seedClassificationRulesFromWorkbook(
+  wb: XLSX.WorkBook,
+  workspaceId: number
+): SeedResult {
   const incomeSheet = wb.Sheets["אינדקס הכנסות"];
   const expenseSheet = wb.Sheets["אינדקס הוצאות"];
 

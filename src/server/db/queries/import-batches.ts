@@ -1,13 +1,19 @@
 import "server-only";
 
 import { getDb } from "../index";
-import type { ImportBatch, ImportBatchStatus, ImportSourceType } from "@/lib/types";
+import type {
+  ImportAdapterKey,
+  ImportBatch,
+  ImportBatchStatus,
+  ImportSourceType,
+} from "@/lib/types";
 
 const BATCH_COLUMNS = `
   id,
   workspace_id        as workspaceId,
   source_filename     as sourceFilename,
   source_type         as sourceType,
+  adapter_key         as adapterKey,
   column_mapping      as columnMapping,
   date_range_start    as dateRangeStart,
   date_range_end      as dateRangeEnd,
@@ -34,16 +40,24 @@ function hydrate(row: Record<string, unknown>): ImportBatch {
 export function createImportBatch(
   workspaceId: number,
   sourceFilename: string,
-  sourceType: ImportSourceType
+  sourceType: ImportSourceType,
+  adapterKey: ImportAdapterKey
 ): ImportBatch {
   const db = getDb();
   const result = db
     .prepare(
-      `INSERT INTO import_batches (workspace_id, source_filename, source_type)
-       VALUES (?, ?, ?)
+      `INSERT INTO import_batches (
+         workspace_id, source_filename, source_type, adapter_key
+       )
+       VALUES (?, ?, ?, ?)
        RETURNING ${BATCH_COLUMNS}`
     )
-    .get(workspaceId, sourceFilename, sourceType) as Record<string, unknown>;
+    .get(
+      workspaceId,
+      sourceFilename,
+      sourceType,
+      adapterKey
+    ) as Record<string, unknown>;
   return hydrate(result);
 }
 

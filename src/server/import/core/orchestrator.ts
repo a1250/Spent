@@ -1,51 +1,83 @@
 /**
- * Import orchestrator: ties together the Format-C parser, normaliser, dedup,
- * and rules engine.  This is the single entry point for the import pipeline.
- *
- * Two public operations:
- *   1. parseAndStageFile  — parse Excel → stage rows → run rules → return preview
- *   2. commitBatch        — insert approved import_rows as real transactions
+ * Generic import orchestration. File-specific parsing lives in adapters while
+ * staging, classification, deduplication, review, and commit stay shared.
  */
 
 import "server-only";
 
 import path from "path";
+import * as XLSX from "xlsx";
 import { getDb } from "@/server/db/index";
 import {
   createImportBatch,
-  updateImportBatchStatus,
-  updateImportBatchCounters,
   getImportBatch,
+  updateImportBatchCounters,
+  updateImportBatchStatus,
 } from "@/server/db/queries/import-batches";
 import {
-  insertImportRow,
-  updateImportRowNormalized,
-  updateImportRowClassification,
-  markImportRowDedup,
   commitImportRow,
-  listImportRows,
   getImportRow,
+  insertImportRow,
+  listImportRows,
+  markImportRowDedup,
   markImportRowPendingDuplicate,
   markImportRowSkippedDuplicate,
+  updateImportRowClassification,
+  updateImportRowNormalized,
 } from "@/server/db/queries/import-rows";
-import { getActiveRulesForEngine, countSeedRules } from "@/server/db/queries/classification-rules";
-import { parseFormatC, isFormatC } from "@/server/import/adapters/legacy-excel/format-c";
-import { seedClassificationRulesFromExcel } from "@/server/import/adapters/legacy-excel/index-seeder";
+import { getActiveRulesForEngine } from "@/server/db/queries/classification-rules";
+import {
+  detectImportAdapter,
+  ImportDetectionError,
+} from "@/server/import/adapters/detector";
+import type { ParsedImportRow } from "@/server/import/adapters/types";
+import type {
+  ImportBatch,
+  ImportRow,
+  ImportRowSourceType,
+} from "@/lib/types";
 import { normalise } from "./normalizer";
-import { computeDedupHash, checkDuplicate } from "./dedup";
+import { checkDuplicate, computeDedupHash } from "./dedup";
 import { classifyRow } from "./rules-engine";
-import type { ImportBatch, ImportRow } from "@/lib/types";
-
-// ── Format detection ──────────────────────────────────────────────────────────
-
-import * as XLSX from "xlsx";
 
 function detectSourceType(filePath: string): "excel" | "csv" {
-  const ext = path.extname(filePath).toLowerCase();
-  return ext === ".csv" ? "csv" : "excel";
+  return path.extname(filePath).toLowerCase() === ".csv" ? "csv" : "excel";
 }
 
-// ── Step 1: parse + stage ─────────────────────────────────────────────────────
+function providerForSource(sourceType: ImportRowSourceType): string {
+  return sourceType === "legacy_excel" ? "legacy_import" : sourceType;
+}
+
+function dedupHashForRow(
+  parsed: ParsedImportRow,
+  normalized: {
+    date: string;
+    amount: number;
+    cleanDescription: string;
+    direction: string;
+  }
+): string {
+  if (parsed.sourceType === "legacy_excel") {
+    return computeDedupHash(
+      normalized.date,
+      normalized.amount,
+      normalized.cleanDescription,
+      normalized.direction
+    );
+  }
+
+  return computeDedupHash(
+    normalized.date,
+    parsed.originalAmount ?? normalized.amount,
+    normalized.cleanDescription,
+    normalized.direction,
+    [
+      parsed.sourceType,
+      parsed.cardLast4 ?? parsed.account ?? "",
+      parsed.originalCurrency ?? parsed.currency ?? "",
+    ]
+  );
+}
 
 export interface StageResult {
   batch: ImportBatch;
@@ -54,75 +86,92 @@ export interface StageResult {
   needsReview: number;
   autoClassified: number;
   duplicates: number;
+  pending: number;
 }
 
 export async function parseAndStageFile(
   filePath: string,
-  workspaceId: number
+  workspaceId: number,
+  sourceFilename?: string
 ): Promise<StageResult> {
-  const filename = path.basename(filePath);
+  const filename = sourceFilename ?? path.basename(filePath);
   const sourceType = detectSourceType(filePath);
 
-  // Detect format — use XLSX.read(buffer) to avoid xlsx's own fs access
-  // which fails when bundled by Next.js/Turbopack
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fsSync = require("fs") as typeof import("fs");
-  const wb = XLSX.read(fsSync.readFileSync(filePath), { cellDates: false, type: "buffer" });
-  if (!isFormatC(wb)) {
-    throw new Error(
-      "Unsupported file format. Only Format-C Excel files (with הכנסות / הוצאות sheets) are supported in Phase 1."
+  const workbook = XLSX.read(fsSync.readFileSync(filePath), {
+    cellDates: false,
+    type: "buffer",
+  });
+  const detection = detectImportAdapter(workbook);
+  if (detection.status === "unsupported_isracard_profile") {
+    throw new ImportDetectionError(
+      "unsupported_isracard_profile",
+      "This looks like an Isracard export profile that is not supported yet.",
+      detection.profileHint
+    );
+  }
+  if (detection.status === "unsupported") {
+    throw new ImportDetectionError(
+      "unsupported_import_format",
+      "Unsupported import format. Use a legacy Excel, Isracard, or CAL transaction export."
     );
   }
 
-  // Auto-seed classification rules from the index sheets (idempotent: INSERT OR IGNORE).
-  // Do this before parsing so the rules engine has rules to evaluate against.
-  const hasIndexSheets =
-    wb.SheetNames.includes("אינדקס הכנסות") &&
-    wb.SheetNames.includes("אינדקס הוצאות");
-
-  if (hasIndexSheets && countSeedRules(workspaceId) === 0) {
-    seedClassificationRulesFromExcel(filePath, workspaceId);
-  }
-
-  // Create batch record
-  const batch = createImportBatch(workspaceId, filename, sourceType);
+  const adapter = detection.adapter;
+  adapter.beforeStage?.({ filePath, workbook, workspaceId });
+  const batch = createImportBatch(
+    workspaceId,
+    filename,
+    sourceType,
+    adapter.key
+  );
 
   try {
     updateImportBatchStatus(workspaceId, batch.id, "mapped");
-
-    // Parse
-    const { incomeRows, expenseRows, skippedIncome, skippedExpense } =
-      parseFormatC(filePath);
-
-    const allParsed = [...incomeRows, ...expenseRows];
-    const totalParsed = allParsed.length;
-    const totalSkipped = skippedIncome + skippedExpense;
-
-    // Load rules once for the whole batch
-    const rules = getActiveRulesForEngine(workspaceId);
+    const parsedResult = adapter.parse(workbook);
+    const allRules = getActiveRulesForEngine(workspaceId);
+    const classificationRules =
+      adapter.key === "legacy-excel"
+        ? allRules
+        : allRules.filter((rule) => rule.createdFrom === "user");
 
     let needsReview = 0;
     let autoClassified = 0;
     let duplicates = 0;
+    let pending = 0;
 
     const db = getDb();
-    const stageAll = db.transaction(() => {
-      for (const parsed of allParsed) {
-        // Insert raw row — legacy fields from Excel stored explicitly for UI display
+    db.transaction(() => {
+      for (const parsed of parsedResult.rows) {
         const row = insertImportRow(batch.id, workspaceId, {
           rawRowNumber: parsed.rawRowNumber,
           rawDate: parsed.rawDate,
           rawAmount: parsed.rawAmount,
           rawDescription: parsed.rawDescription,
           rawAccount: parsed.rawAccount,
-          rawBalance: null,
+          rawBalance: parsed.rawBalance,
           rawMetadata: parsed.rawMetadata,
-          legacyCategory: parsed.hebrewCategory || null,
-          sourceSheetName: parsed.rawMetadata.sheetName ?? null,
+          legacyCategory: parsed.legacyCategory ?? null,
+          sourceSheetName: parsed.sourceSheetName ?? null,
+          sourceType: parsed.sourceType,
+          sourceSection: parsed.sourceSection,
+          billingDate: parsed.billingDate,
+          cardLast4: parsed.cardLast4,
+          digitalWalletCardId: parsed.digitalWalletCardId,
+          voucherNumber: parsed.voucherNumber,
+          originalAmount: parsed.originalAmount,
+          originalCurrency: parsed.originalCurrency,
+          fxRate: parsed.fxRate,
+          transactionType: parsed.transactionType,
+          paymentChannel: parsed.paymentChannel,
+          sourceCategory: parsed.sourceCategory,
+          currency: parsed.currency,
+          transactionStatus: parsed.transactionStatus,
+          notes: parsed.notes,
         });
 
-        // Normalise
-        const norm = normalise({
+        const normalized = normalise({
           rawDate: parsed.rawDate,
           rawAmount: parsed.rawAmount,
           rawDescription: parsed.rawDescription,
@@ -133,64 +182,81 @@ export async function parseAndStageFile(
           counterparty: parsed.counterparty,
           cleanDescription: parsed.cleanDescription,
         });
-
-        if (!norm) continue;
+        if (!normalized) continue;
 
         updateImportRowNormalized(workspaceId, row.id, {
-          date: norm.date,
-          amount: norm.amount,
-          direction: norm.direction,
-          account: norm.account,
-          counterparty: norm.counterparty,
-          cleanDescription: norm.cleanDescription,
+          date: normalized.date,
+          amount: normalized.amount,
+          direction: normalized.direction,
+          account: normalized.account,
+          counterparty: normalized.counterparty,
+          cleanDescription: normalized.cleanDescription,
         });
 
-        // Dedup
-        const hash = computeDedupHash(
-          norm.date,
-          norm.amount,
-          norm.cleanDescription,
-          norm.direction
+        const dedupHash = dedupHashForRow(parsed, normalized);
+        const dedup = checkDuplicate(workspaceId, dedupHash);
+        markImportRowDedup(
+          workspaceId,
+          row.id,
+          dedupHash,
+          dedup.isDuplicate,
+          dedup.existingTransactionId
         );
-        const dedup = checkDuplicate(workspaceId, hash);
-        markImportRowDedup(workspaceId, row.id, hash, dedup.isDuplicate, dedup.existingTransactionId);
 
-        if (dedup.isDuplicate) {
-          duplicates++;
-          continue;
-        }
-
-        // Classify via rules engine
         const classification = classifyRow(
           {
-            cleanDescription: norm.cleanDescription,
-            counterparty: norm.counterparty,
-            account: norm.account,
-            amount: norm.amount,
-            direction: norm.direction,
+            cleanDescription: normalized.cleanDescription,
+            counterparty: normalized.counterparty,
+            account: normalized.account,
+            amount: normalized.amount,
+            direction: normalized.direction,
           },
-          rules
+          classificationRules
         );
-
-        // Find first matched seed rule's match_value for legacy_rule_category
-        const firstMatchedRule = classification.matchedRuleIds.length > 0
-          ? rules.find((r) => r.id === classification.matchedRuleIds[0])
-          : null;
+        const firstMatchedRule =
+          classification.matchedRuleIds.length > 0
+            ? classificationRules.find(
+                (rule) => rule.id === classification.matchedRuleIds[0]
+              )
+            : null;
         const legacyRuleCategory =
-          firstMatchedRule?.createdFrom === "seed" ? firstMatchedRule.matchValue : null;
-
+          firstMatchedRule?.createdFrom === "seed"
+            ? firstMatchedRule.matchValue
+            : null;
         if (legacyRuleCategory) {
-          getDb()
-            .prepare(
-              `UPDATE import_rows SET legacy_rule_category = ? WHERE workspace_id = ? AND id = ?`
-            )
-            .run(legacyRuleCategory, workspaceId, row.id);
+          db.prepare(
+            `UPDATE import_rows
+             SET legacy_rule_category = ?
+             WHERE workspace_id = ? AND id = ?`
+          ).run(legacyRuleCategory, workspaceId, row.id);
         }
 
+        const financialNature =
+          classification.hasUserApprovedRule &&
+          classification.financialNature !== "unknown"
+            ? classification.financialNature
+            : parsed.financialNature ?? classification.financialNature;
+        const cashFlowType =
+          parsed.transactionStatus === "pending"
+            ? "pending"
+            : classification.hasUserApprovedRule &&
+                classification.cashFlowType !== "unknown"
+              ? classification.cashFlowType
+              : parsed.cashFlowType ?? classification.cashFlowType;
+        const pnlImpact =
+          classification.hasUserApprovedRule &&
+          classification.pnlImpact !== "maybe"
+            ? classification.pnlImpact
+            : parsed.pnlImpact ?? classification.pnlImpact;
+
+        updateImportRowNormalized(workspaceId, row.id, {
+          categoryId: classification.categoryId,
+          businessUnit: classification.businessUnit,
+        });
         updateImportRowClassification(workspaceId, row.id, {
-          financialNature: classification.financialNature,
-          cashFlowType: classification.cashFlowType,
-          pnlImpact: classification.pnlImpact,
+          financialNature,
+          cashFlowType,
+          pnlImpact,
           classificationStatus: classification.classificationStatus,
           confidenceScore: classification.confidenceScore,
           aiExplanation:
@@ -199,48 +265,47 @@ export async function parseAndStageFile(
               : null,
         });
 
+        if (dedup.isDuplicate) {
+          duplicates++;
+          continue;
+        }
+        if (parsed.transactionStatus === "pending") pending++;
         if (classification.classificationStatus === "needs_review") {
           needsReview++;
         } else {
           autoClassified++;
         }
       }
-    });
+    })();
 
-    stageAll();
-
-    // Update batch counters
     updateImportBatchCounters(workspaceId, batch.id, {
-      totalRows: totalParsed,
-      skippedRows: totalSkipped,
+      totalRows: parsedResult.rows.length,
+      skippedRows: parsedResult.skipped,
       duplicateRows: duplicates,
       needsReviewRows: needsReview,
       importedRows: 0,
     });
-
     updateImportBatchStatus(workspaceId, batch.id, "reviewing");
 
-    const freshBatch = getImportBatch(workspaceId, batch.id)!;
-
     return {
-      batch: freshBatch,
-      totalRows: totalParsed,
-      skipped: totalSkipped,
+      batch: getImportBatch(workspaceId, batch.id)!,
+      totalRows: parsedResult.rows.length,
+      skipped: parsedResult.skipped,
       needsReview,
       autoClassified,
       duplicates,
+      pending,
     };
-  } catch (err) {
+  } catch (error) {
     updateImportBatchStatus(workspaceId, batch.id, "failed");
-    throw err;
+    throw error;
   }
 }
-
-// ── Step 2: commit ────────────────────────────────────────────────────────────
 
 export interface CommitResult {
   inserted: number;
   skipped: number;
+  pending: number;
   batchId: number;
 }
 
@@ -250,20 +315,23 @@ export async function commitBatch(
 ): Promise<CommitResult> {
   const batch = getImportBatch(workspaceId, batchId);
   if (!batch) throw new Error(`Batch ${batchId} not found`);
-  if (batch.status === "committed") {
-    throw new Error("Batch already committed");
-  }
+  if (batch.status === "committed") throw new Error("Batch already committed");
 
-  const rows = listImportRows(workspaceId, batchId, { importStatus: "pending" });
-
+  const rows = listImportRows(workspaceId, batchId, {
+    importStatus: "pending",
+  });
   const db = getDb();
-  const syncRunId = getOrCreateLegacySyncRun(workspaceId, batchId, rows);
-
   let inserted = 0;
   let skipped = 0;
+  let pending = 0;
+  let syncRunId: number | null = null;
 
-  const commitAll = db.transaction(() => {
+  db.transaction(() => {
     for (const row of rows) {
+      if (row.transactionStatus === "pending") {
+        pending++;
+        continue;
+      }
       if (row.isDuplicate || !row.date || row.amount == null) {
         skipped++;
         continue;
@@ -277,52 +345,40 @@ export async function commitBatch(
           row.cleanDescription ?? row.rawDescription ?? "",
           row.direction ?? "unknown"
         );
-      const txResult = insertTransactionFromImportRow(
+      syncRunId ??= getOrCreateImportSyncRun(workspaceId, batchId, rows);
+      const transaction = insertTransactionFromImportRow(
         row,
         batchId,
         workspaceId,
         syncRunId,
         dedupHash,
-        0
+        0,
+        "completed"
       );
 
-      if (txResult) {
-        commitImportRow(workspaceId, row.id, txResult.id);
+      if (transaction) {
+        commitImportRow(workspaceId, row.id, transaction.id);
         inserted++;
-      } else {
-        const match = db
-          .prepare(
-            `SELECT id FROM transactions
-             WHERE workspace_id = ? AND dedup_hash = ?
-             ORDER BY dedup_sequence, id
-             LIMIT 1`
-          )
-          .get(workspaceId, dedupHash) as { id: number } | undefined;
-        markImportRowPendingDuplicate(workspaceId, row.id, match?.id ?? null);
-        skipped++;
+        continue;
       }
+
+      const match = db
+        .prepare(
+          `SELECT id
+           FROM transactions
+           WHERE workspace_id = ? AND dedup_hash = ?
+           ORDER BY dedup_sequence, id
+           LIMIT 1`
+        )
+        .get(workspaceId, dedupHash) as { id: number } | undefined;
+      markImportRowPendingDuplicate(workspaceId, row.id, match?.id ?? null);
+      skipped++;
     }
-  });
+  })();
 
-  commitAll();
-
-  // Update batch counters
-  const counters = db
-    .prepare(
-      `SELECT
-         SUM(CASE WHEN import_status = 'imported' THEN 1 ELSE 0 END) as importedRows,
-         SUM(CASE WHEN is_duplicate = 1 THEN 1 ELSE 0 END) as duplicateRows
-       FROM import_rows
-       WHERE workspace_id = ? AND batch_id = ?`
-    )
-    .get(workspaceId, batchId) as {
-      importedRows: number;
-      duplicateRows: number;
-    };
-  updateImportBatchCounters(workspaceId, batchId, counters);
+  refreshBatchCounters(workspaceId, batchId);
   updateImportBatchStatus(workspaceId, batchId, "committed");
-
-  return { inserted, skipped, batchId };
+  return { inserted, skipped, pending, batchId };
 }
 
 export type DuplicateReviewAction =
@@ -358,7 +414,6 @@ export function reviewDuplicateRow(
     markImportRowSkippedDuplicate(workspaceId, rowId);
     return { action, transactionId: null, dedupSequence: null };
   }
-
   if (action === "keep_pending") {
     markImportRowPendingDuplicate(
       workspaceId,
@@ -367,54 +422,114 @@ export function reviewDuplicateRow(
     );
     return { action, transactionId: null, dedupSequence: null };
   }
-
   if (!row.date || row.amount == null || !row.dedupHash) {
     throw new Error("Duplicate row is missing normalized transaction data");
   }
 
   const db = getDb();
-  const dedupHash = row.dedupHash;
   return db.transaction(() => {
-    const sequenceRow = db
+    const sequence = db
       .prepare(
         `SELECT COALESCE(MAX(dedup_sequence), -1) + 1 as nextSequence
          FROM transactions
          WHERE workspace_id = ? AND dedup_hash = ?`
       )
-      .get(workspaceId, dedupHash) as { nextSequence: number };
-    const syncRunId = getOrCreateLegacySyncRun(workspaceId, batchId, [row]);
-    const inserted = insertTransactionFromImportRow(
+      .get(workspaceId, row.dedupHash as string) as { nextSequence: number };
+    const syncRunId = getOrCreateImportSyncRun(workspaceId, batchId, [row]);
+    const transaction = insertTransactionFromImportRow(
       row,
       batchId,
       workspaceId,
       syncRunId,
-      dedupHash,
-      sequenceRow.nextSequence
+      row.dedupHash as string,
+      sequence.nextSequence,
+      row.transactionStatus
     );
-    if (!inserted) {
+    if (!transaction) {
       throw new Error("Could not import duplicate with the next sequence");
     }
 
-    commitImportRow(workspaceId, rowId, inserted.id);
-    const importedCount = db
-      .prepare(
-        `SELECT COUNT(*) as count
-         FROM import_rows
-         WHERE workspace_id = ? AND batch_id = ? AND import_status = 'imported'`
-      )
-      .get(workspaceId, batchId) as { count: number };
-    updateImportBatchCounters(workspaceId, batchId, {
-      importedRows: importedCount.count,
-    });
+    commitImportRow(workspaceId, rowId, transaction.id);
+    refreshBatchCounters(workspaceId, batchId);
     return {
       action,
-      transactionId: inserted.id,
-      dedupSequence: sequenceRow.nextSequence,
+      transactionId: transaction.id,
+      dedupSequence: sequence.nextSequence,
     };
   })();
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+export function importPendingRow(
+  batchId: number,
+  rowId: number,
+  workspaceId: number
+): { transactionId: number } {
+  const batch = getImportBatch(workspaceId, batchId);
+  if (!batch) throw new Error(`Batch ${batchId} not found`);
+
+  const row = getImportRow(workspaceId, rowId);
+  if (!row || row.batchId !== batchId) {
+    throw new Error(`Import row ${rowId} not found`);
+  }
+  if (row.transactionStatus !== "pending") {
+    throw new Error("Row is not a pending credit-card transaction");
+  }
+  if (row.importStatus === "imported") {
+    throw new Error("Pending row was already imported");
+  }
+  if (row.isDuplicate) {
+    throw new Error("Resolve this row under Potential Duplicates");
+  }
+  if (!row.date || row.amount == null || !row.dedupHash) {
+    throw new Error("Pending row is missing normalized transaction data");
+  }
+
+  const duplicate = checkDuplicate(workspaceId, row.dedupHash);
+  if (duplicate.isDuplicate) {
+    markImportRowPendingDuplicate(
+      workspaceId,
+      rowId,
+      duplicate.existingTransactionId
+    );
+    throw new Error("A matching transaction already exists; review it as a duplicate");
+  }
+
+  const db = getDb();
+  return db.transaction(() => {
+    const syncRunId = getOrCreateImportSyncRun(workspaceId, batchId, [row]);
+    const transaction = insertTransactionFromImportRow(
+      row,
+      batchId,
+      workspaceId,
+      syncRunId,
+      row.dedupHash as string,
+      0,
+      "pending"
+    );
+    if (!transaction) {
+      throw new Error("Could not import pending transaction");
+    }
+    commitImportRow(workspaceId, rowId, transaction.id);
+    refreshBatchCounters(workspaceId, batchId);
+    return { transactionId: transaction.id };
+  })();
+}
+
+function refreshBatchCounters(workspaceId: number, batchId: number): void {
+  const counters = getDb()
+    .prepare(
+      `SELECT
+         COUNT(CASE WHEN import_status = 'imported' THEN 1 END) as importedRows,
+         COUNT(CASE WHEN is_duplicate = 1 THEN 1 END) as duplicateRows
+       FROM import_rows
+       WHERE workspace_id = ? AND batch_id = ?`
+    )
+    .get(workspaceId, batchId) as {
+      importedRows: number;
+      duplicateRows: number;
+    };
+  updateImportBatchCounters(workspaceId, batchId, counters);
+}
 
 function insertTransactionFromImportRow(
   row: ImportRow,
@@ -422,12 +537,17 @@ function insertTransactionFromImportRow(
   workspaceId: number,
   syncRunId: number,
   dedupHash: string,
-  dedupSequence: number
+  dedupSequence: number,
+  status: "completed" | "pending"
 ): { id: number } | undefined {
   if (!row.date || row.amount == null) return undefined;
 
-  const signedAmount =
-    row.direction === "expense" ? -Math.abs(row.amount) : Math.abs(row.amount);
+  const sign = row.direction === "expense" ? -1 : 1;
+  const chargedAmount = sign * Math.abs(row.amount);
+  const originalAmount =
+    sign * Math.abs(row.originalAmount ?? row.amount);
+  const description =
+    row.cleanDescription ?? row.rawDescription ?? "Imported transaction";
 
   return getDb()
     .prepare(
@@ -437,60 +557,74 @@ function insertTransactionFromImportRow(
          charged_amount, charged_currency,
          description, memo, type, status,
          identifier, installment_number, installment_total,
+         category_id, category_source,
          provider, credential_id, sync_run_id,
-         dedup_hash, dedup_sequence, kind,
+         dedup_hash, dedup_sequence, kind, needs_review,
          financial_nature, cash_flow_type, pnl_impact,
          classification_status, confidence_score, ai_explanation,
          business_unit, counterparty, clean_description,
          import_batch_id, import_row_id
        ) VALUES (
-         ?, ?, ?, ?,
-         ?, 'ILS',
-         ?, 'ILS',
-         ?, NULL, 'normal', 'completed',
-         NULL, NULL, NULL,
-         'legacy_import', NULL, ?,
-         ?, ?,
-         ?,
-         ?, ?, ?,
-         ?, ?, ?,
-         ?, ?, ?,
-         ?, ?
+         @workspaceId, @accountNumber, @date, @processedDate,
+         @originalAmount, @originalCurrency,
+         @chargedAmount, @chargedCurrency,
+         @description, @memo, @type, @status,
+         @identifier, NULL, NULL,
+         @categoryId, @categorySource,
+         @provider, NULL, @syncRunId,
+         @dedupHash, @dedupSequence, @kind, @needsReview,
+         @financialNature, @cashFlowType, @pnlImpact,
+         @classificationStatus, @confidenceScore, @aiExplanation,
+         @businessUnit, @counterparty, @cleanDescription,
+         @importBatchId, @importRowId
        )
        ON CONFLICT(workspace_id, dedup_hash, dedup_sequence) DO NOTHING
        RETURNING id`
     )
-    .get(
+    .get({
       workspaceId,
-      row.account ?? "imported",
-      row.date,
-      row.date,
-      signedAmount,
-      signedAmount,
-      row.cleanDescription ?? row.rawDescription ?? "Imported transaction",
+      accountNumber: row.cardLast4 ?? row.account ?? "imported",
+      date: row.date,
+      processedDate: row.billingDate ?? row.date,
+      originalAmount,
+      originalCurrency: row.originalCurrency ?? row.currency ?? "ILS",
+      chargedAmount,
+      chargedCurrency: row.currency ?? row.originalCurrency ?? "ILS",
+      description,
+      memo: row.notes,
+      type: row.transactionType?.includes("תשלומים")
+        ? "installments"
+        : "normal",
+      status,
+      identifier: row.voucherNumber ?? row.digitalWalletCardId,
+      categoryId: row.categoryId,
+      categorySource: row.categoryId == null ? null : "user",
+      provider: providerForSource(row.sourceType),
       syncRunId,
       dedupHash,
       dedupSequence,
-      row.direction === "income"
-        ? "income"
-        : row.direction === "expense"
-          ? "expense"
-          : "transfer",
-      row.financialNature,
-      row.cashFlowType,
-      row.pnlImpact,
-      row.classificationStatus,
-      row.confidenceScore,
-      row.aiExplanation,
-      row.businessUnit,
-      row.counterparty,
-      row.cleanDescription,
-      batchId,
-      row.id
-    ) as { id: number } | undefined;
+      kind:
+        row.direction === "income"
+          ? "income"
+          : row.direction === "expense"
+            ? "expense"
+            : "transfer",
+      needsReview: row.classificationStatus === "needs_review" ? 1 : 0,
+      financialNature: row.financialNature,
+      cashFlowType: row.cashFlowType,
+      pnlImpact: row.pnlImpact,
+      classificationStatus: row.classificationStatus,
+      confidenceScore: row.confidenceScore,
+      aiExplanation: row.aiExplanation,
+      businessUnit: row.businessUnit,
+      counterparty: row.counterparty,
+      cleanDescription: row.cleanDescription,
+      importBatchId: batchId,
+      importRowId: row.id,
+    }) as { id: number } | undefined;
 }
 
-function getOrCreateLegacySyncRun(
+function getOrCreateImportSyncRun(
   workspaceId: number,
   batchId: number,
   rows: ImportRow[]
@@ -507,24 +641,23 @@ function getOrCreateLegacySyncRun(
     .get(workspaceId, batchId) as { syncRunId: number } | undefined;
   if (existing) return existing.syncRunId;
 
-  const dateRange = getDateRange(rows);
+  const dates = rows
+    .map((row) => row.date)
+    .filter((date): date is string => Boolean(date))
+    .sort();
+  const provider = rows[0]
+    ? providerForSource(rows[0].sourceType)
+    : "file_import";
   return (
     db
       .prepare(
         `INSERT INTO sync_runs (
            workspace_id, provider, started_at, completed_at, status, scrape_from_date
          ) VALUES (
-           ?, 'legacy_import', datetime('now'), datetime('now'), 'completed', ?
+           ?, ?, datetime('now'), datetime('now'), 'completed', ?
          )
          RETURNING id`
       )
-      .get(workspaceId, dateRange.min ?? "2000-01-01") as { id: number }
+      .get(workspaceId, provider, dates[0] ?? "2000-01-01") as { id: number }
   ).id;
-}
-
-function getDateRange(rows: ImportRow[]): { min: string | null; max: string | null } {
-  const dates = rows.map((r) => r.date).filter(Boolean) as string[];
-  if (dates.length === 0) return { min: null, max: null };
-  dates.sort();
-  return { min: dates[0], max: dates[dates.length - 1] };
 }

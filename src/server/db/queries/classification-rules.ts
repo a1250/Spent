@@ -85,6 +85,76 @@ export function createClassificationRule(
   return hydrate(row);
 }
 
+export function saveUserClassificationRule(
+  workspaceId: number,
+  data: {
+    matchField: RuleMatchField;
+    matchValue: string;
+    financialNature: FinancialNature;
+    cashFlowType: CashFlowType;
+    pnlImpact: PnlImpact;
+    categoryId: number | null;
+    direction: TransactionDirection | null;
+    businessUnit: BusinessUnit | null;
+  }
+): ClassificationRule {
+  const existing = getDb()
+    .prepare(
+      `SELECT id
+       FROM classification_rules
+       WHERE workspace_id = ?
+         AND match_field = ?
+         AND match_type = 'exact'
+         AND match_value = ?
+         AND created_from = 'user'
+       ORDER BY id
+       LIMIT 1`
+    )
+    .get(
+      workspaceId,
+      data.matchField,
+      data.matchValue
+    ) as { id: number } | undefined;
+
+  if (!existing) {
+    return createClassificationRule(workspaceId, {
+      matchField: data.matchField,
+      matchType: "exact",
+      matchValue: data.matchValue,
+      financialNature: data.financialNature,
+      cashFlowType: data.cashFlowType,
+      pnlImpact: data.pnlImpact,
+      categoryId: data.categoryId,
+      direction: data.direction,
+      businessUnit: data.businessUnit,
+      priority: 50,
+      confidenceBoost: 1,
+      createdFrom: "user",
+    });
+  }
+
+  updateClassificationRule(workspaceId, existing.id, {
+    financialNature: data.financialNature,
+    cashFlowType: data.cashFlowType,
+    pnlImpact: data.pnlImpact,
+    categoryId: data.categoryId,
+    direction: data.direction,
+    businessUnit: data.businessUnit,
+    priority: 50,
+    confidenceBoost: 1,
+    isActive: true,
+  });
+  return hydrate(
+    getDb()
+      .prepare(
+        `SELECT ${RULE_COLUMNS}
+         FROM classification_rules
+         WHERE workspace_id = ? AND id = ?`
+      )
+      .get(workspaceId, existing.id) as Record<string, unknown>
+  );
+}
+
 export function bulkInsertSeedRules(
   workspaceId: number,
   rules: Array<{

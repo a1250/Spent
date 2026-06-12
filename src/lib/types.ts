@@ -11,6 +11,7 @@ export interface Workspace {
 export type FinancialNature =
   | "operating_income"
   | "operating_expense"
+  | "refund"
   | "working_capital"
   | "internal_transfer"
   | "owner_deposit"
@@ -42,6 +43,16 @@ export type ClassificationStatus =
 export type BusinessUnit = "personal" | "business" | "investment";
 
 export type TransactionDirection = "income" | "expense" | "transfer" | "unknown";
+
+export type ImportAdapterKey =
+  | "legacy-excel"
+  | "credit-card-isracard"
+  | "credit-card-cal";
+
+export type ImportRowSourceType =
+  | "legacy_excel"
+  | "credit_card_isracard"
+  | "credit_card_cal";
 
 // ── Transaction ───────────────────────────────────────────────────────────────
 
@@ -105,6 +116,7 @@ export interface ImportBatch {
   workspaceId: number;
   sourceFilename: string;
   sourceType: ImportSourceType;
+  adapterKey: ImportAdapterKey;
   columnMapping: Record<string, string> | null;
   dateRangeStart: string | null;
   dateRangeEnd: string | null;
@@ -173,11 +185,25 @@ export interface ImportRow {
   // Pipeline
   importStatus: ImportRowStatus;
   transactionId: number | null;
-  // Legacy Excel fields (null for non-Excel sources)
+  // Source-specific audit fields
   legacyCategory: string | null;
   legacyRuleCategory: string | null;
   sourceSheetName: string | null;
   notes: string | null;
+  sourceType: ImportRowSourceType;
+  sourceSection: string | null;
+  billingDate: string | null;
+  cardLast4: string | null;
+  digitalWalletCardId: string | null;
+  voucherNumber: string | null;
+  originalAmount: number | null;
+  originalCurrency: string | null;
+  fxRate: number | null;
+  transactionType: string | null;
+  paymentChannel: string | null;
+  sourceCategory: string | null;
+  currency: string | null;
+  transactionStatus: "completed" | "pending";
   createdAt: string;
   updatedAt: string;
 }

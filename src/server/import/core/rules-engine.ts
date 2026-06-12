@@ -96,6 +96,7 @@ export interface ClassificationResult {
   cashFlowType: CashFlowType;
   pnlImpact: PnlImpact;
   direction: TransactionDirection;
+  categoryId: number | null;
   businessUnit: BusinessUnit | null;
   classificationStatus: ClassificationStatus;
   confidenceScore: number;
@@ -119,8 +120,10 @@ export function classifyRow(
   rules: ClassificationRule[]
 ): ClassificationResult {
   let financialNature: FinancialNature = "unknown";
+  let cashFlowType: CashFlowType = "unknown";
   let pnlImpact: PnlImpact = "maybe";
   let direction: TransactionDirection = row.direction ?? "unknown";
+  let categoryId: number | null = null;
   let businessUnit: BusinessUnit | null = null;
   let confidence = 0;
   let hasUserApprovedRule = false;
@@ -133,6 +136,9 @@ export function classifyRow(
     if (financialNature === "unknown" && rule.financialNature) {
       financialNature = rule.financialNature;
     }
+    if (cashFlowType === "unknown" && rule.cashFlowType) {
+      cashFlowType = rule.cashFlowType;
+    }
     if (pnlImpact === "maybe" && rule.pnlImpact) {
       pnlImpact = rule.pnlImpact;
     }
@@ -141,6 +147,9 @@ export function classifyRow(
     }
     if (!businessUnit && rule.businessUnit) {
       businessUnit = rule.businessUnit;
+    }
+    if (categoryId == null && rule.categoryId != null) {
+      categoryId = rule.categoryId;
     }
 
     if (rule.createdFrom === "user") {
@@ -154,7 +163,9 @@ export function classifyRow(
     if (confidence >= 1) break;
   }
 
-  const cashFlowType = deriveCashFlowType(financialNature, direction);
+  if (cashFlowType === "unknown") {
+    cashFlowType = deriveCashFlowType(financialNature, direction);
+  }
 
   // auto_classified requires BOTH:
   //   1. confidence >= threshold
@@ -170,6 +181,7 @@ export function classifyRow(
     cashFlowType,
     pnlImpact,
     direction,
+    categoryId,
     businessUnit,
     classificationStatus,
     confidenceScore: Math.round(confidence * 100) / 100,

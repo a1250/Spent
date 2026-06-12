@@ -296,9 +296,15 @@ export function getActivity() {
   return fetchJSON<ActivitySnapshot>(`/api/activity`);
 }
 
-export function getCategories(kind?: CategoryKindFilter) {
-  const qs = kind ? `?kind=${kind}` : "";
-  return fetchJSON<Category[]>(`/api/categories${qs}`);
+export function getCategories(
+  kind?: CategoryKindFilter,
+  options?: { leavesOnly?: boolean }
+) {
+  const params = new URLSearchParams();
+  if (kind) params.set("kind", kind);
+  if (options?.leavesOnly) params.set("leavesOnly", "1");
+  const query = params.size > 0 ? `?${params}` : "";
+  return fetchJSON<Category[]>(`/api/categories${query}`);
 }
 
 export function updateTransactionCategory(id: number, categoryId: number) {
@@ -692,6 +698,7 @@ export interface ImportUploadResult {
     needsReview: number;
     duplicates: number;
     skipped: number;
+    pending?: number;
   };
 }
 
@@ -715,7 +722,12 @@ export function getImportBatch(batchId: number) {
 }
 
 export function commitImportBatch(batchId: number) {
-  return fetchJSON<{ inserted: number; skipped: number; batchId: number }>(
+  return fetchJSON<{
+    inserted: number;
+    skipped: number;
+    pending: number;
+    batchId: number;
+  }>(
     `/api/import/${batchId}`,
     {
       method: "POST",
@@ -733,6 +745,8 @@ export interface ImportRowPatch {
   notes?: string | null;
   categoryId?: number | null;
   duplicateAction?: "skip_duplicate" | "import_anyway" | "keep_pending";
+  pendingAction?: "import_pending";
+  saveAsRule?: boolean;
 }
 
 export function patchImportRow(

@@ -44,6 +44,20 @@ const ROW_COLUMNS = `
   r.legacy_rule_category  as legacyRuleCategory,
   r.source_sheet_name     as sourceSheetName,
   r.notes,
+  r.source_type           as sourceType,
+  r.source_section        as sourceSection,
+  r.billing_date          as billingDate,
+  r.card_last4            as cardLast4,
+  r.digital_wallet_card_id as digitalWalletCardId,
+  r.voucher_number        as voucherNumber,
+  r.original_amount       as originalAmount,
+  r.original_currency     as originalCurrency,
+  r.fx_rate               as fxRate,
+  r.transaction_type      as transactionType,
+  r.payment_channel       as paymentChannel,
+  r.source_category       as sourceCategory,
+  r.currency,
+  r.transaction_status    as transactionStatus,
   r.created_at            as createdAt,
   r.updated_at            as updatedAt
 `.trim();
@@ -150,6 +164,21 @@ export function insertImportRow(
     legacyCategory?: string | null;
     legacyRuleCategory?: string | null;
     sourceSheetName?: string | null;
+    sourceType: ImportRow["sourceType"];
+    sourceSection?: string | null;
+    billingDate?: string | null;
+    cardLast4?: string | null;
+    digitalWalletCardId?: string | null;
+    voucherNumber?: string | null;
+    originalAmount?: number | null;
+    originalCurrency?: string | null;
+    fxRate?: number | null;
+    transactionType?: string | null;
+    paymentChannel?: string | null;
+    sourceCategory?: string | null;
+    currency?: string | null;
+    transactionStatus?: "completed" | "pending";
+    notes?: string | null;
   }
 ): ImportRow {
   const row = getDb()
@@ -158,8 +187,16 @@ export function insertImportRow(
          batch_id, workspace_id,
          raw_row_number, raw_date, raw_amount, raw_description,
          raw_account, raw_balance, raw_metadata,
-         legacy_category, legacy_rule_category, source_sheet_name
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         legacy_category, legacy_rule_category, source_sheet_name, notes,
+         source_type, source_section, billing_date, card_last4,
+         digital_wallet_card_id, voucher_number,
+         original_amount, original_currency, fx_rate,
+         transaction_type, payment_channel, source_category,
+         currency, transaction_status
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       )
        RETURNING ${ROW_COLUMNS.replace(/r\./g, "")}`
     )
     .get(
@@ -174,7 +211,22 @@ export function insertImportRow(
       data.rawMetadata ? JSON.stringify(data.rawMetadata) : null,
       data.legacyCategory ?? null,
       data.legacyRuleCategory ?? null,
-      data.sourceSheetName ?? null
+      data.sourceSheetName ?? null,
+      data.notes ?? null,
+      data.sourceType,
+      data.sourceSection ?? null,
+      data.billingDate ?? null,
+      data.cardLast4 ?? null,
+      data.digitalWalletCardId ?? null,
+      data.voucherNumber ?? null,
+      data.originalAmount ?? null,
+      data.originalCurrency ?? null,
+      data.fxRate ?? null,
+      data.transactionType ?? null,
+      data.paymentChannel ?? null,
+      data.sourceCategory ?? null,
+      data.currency ?? null,
+      data.transactionStatus ?? "completed"
     ) as Record<string, unknown>;
   return hydrate(row);
 }

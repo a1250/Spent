@@ -22,9 +22,6 @@ INSERT OR IGNORE INTO categories
   (workspace_id, parent_id, name, kind, color, icon, budget_mode, description)
 SELECT w.id, NULL, p.name, p.kind, p.color, p.icon, 'tracking', p.description
 FROM workspaces w
--- Only seed workspaces that have no categories (i.e., were just cleared above,
--- or are a fresh workspace that somehow skipped seeding).
-WHERE NOT EXISTS (SELECT 1 FROM categories WHERE workspace_id = w.id)
 CROSS JOIN (
   -- Income parents
   SELECT 'Operating Revenue' AS name, 'income' AS kind, '#C0D582' AS color,
@@ -58,7 +55,9 @@ CROSS JOIN (
   UNION ALL
   SELECT 'Money Movement',  'expense', '#A2ABBB', 'arrow-left-right',
          'Transfers, loan repayments, investments, and other balance-sheet flows.'
-) AS p;
+) AS p
+-- Only seed workspaces that have no categories (cleared above or fresh).
+WHERE NOT EXISTS (SELECT 1 FROM categories WHERE workspace_id = w.id);
 
 -- ── Step 3: seed leaf categories ──────────────────────────────────────────────
 
@@ -70,10 +69,6 @@ SELECT w.id,
         LIMIT 1),
        leaf.name, leaf.kind, leaf.color, leaf.icon, 'budgeted', leaf.description
 FROM workspaces w
-WHERE NOT EXISTS (
-  SELECT 1 FROM categories
-  WHERE workspace_id = w.id AND parent_id IS NOT NULL
-)
 CROSS JOIN (
   -- ── Income leaves ──────────────────────────────────────────────────────────
   -- Operating Revenue
@@ -256,4 +251,9 @@ CROSS JOIN (
   SELECT 'Money Movement','Unknown / Needs Review','expense',
          '#C9C9C9','circle-help',
          'Unclassified transactions that require manual review.'
-) AS leaf;
+) AS leaf
+-- Only seed workspaces that have no leaf categories.
+WHERE NOT EXISTS (
+  SELECT 1 FROM categories
+  WHERE workspace_id = w.id AND parent_id IS NOT NULL
+);

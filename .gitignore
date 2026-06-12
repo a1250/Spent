@@ -37,6 +37,9 @@ yarn-error.log*
 # local data (sqlite db, encryption key)
 /data/
 
+# local extracted work files
+/budgetwise-work-extracted/
+
 # claude code config + session artifacts (per-developer, not shared)
 /.claude/
 /.superpowers/

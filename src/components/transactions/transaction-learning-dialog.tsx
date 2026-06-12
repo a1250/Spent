@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,12 +13,14 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { updateTransactionLearning } from "@/lib/api";
+import { listBusinessUnits, updateTransactionLearning } from "@/lib/api";
 import type {
   BusinessUnit,
   CashFlowType,
@@ -95,6 +97,14 @@ export function TransactionLearningDialog({
     transaction.importBatchId != null && transaction.importRowId != null;
   const needsMatcher = applyScope === "batch_similar" || saveAsRule;
 
+  const { data: businessUnits = [] } = useQuery({
+    queryKey: ["business-units"],
+    queryFn: listBusinessUnits,
+  });
+
+  const parentCategories = categories.filter((c) => c.parentId === null);
+  const leafCategories = categories.filter((c) => c.parentId !== null);
+
   const mutation = useMutation({
     mutationFn: () =>
       updateTransactionLearning(transaction.id, {
@@ -151,11 +161,22 @@ export function TransactionLearningDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">ללא קטגוריה</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={String(category.id)}>
-                    {category.name}
-                  </SelectItem>
-                ))}
+                {parentCategories.map((parent) => {
+                  const children = leafCategories.filter(
+                    (l) => l.parentId === parent.id
+                  );
+                  if (children.length === 0) return null;
+                  return (
+                    <SelectGroup key={parent.id}>
+                      <SelectLabel>{parent.name}</SelectLabel>
+                      {children.map((cat) => (
+                        <SelectItem key={cat.id} value={String(cat.id)}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -232,9 +253,11 @@ export function TransactionLearningDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">לא הוגדר</SelectItem>
-                <SelectItem value="personal">אישי</SelectItem>
-                <SelectItem value="business">עסקי</SelectItem>
-                <SelectItem value="investment">השקעות</SelectItem>
+                {businessUnits.map((bu) => (
+                  <SelectItem key={bu.slug} value={bu.slug}>
+                    {bu.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

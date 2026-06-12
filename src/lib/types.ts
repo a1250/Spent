@@ -40,7 +40,19 @@ export type ClassificationStatus =
   | "manually_approved"
   | "locked";
 
-export type BusinessUnit = "personal" | "business" | "investment";
+export type BusinessUnit = string;
+
+export interface BusinessUnitRecord {
+  id: number;
+  workspaceId: number;
+  slug: string;
+  label: string;
+  color: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type TransactionDirection = "income" | "expense" | "transfer" | "unknown";
 

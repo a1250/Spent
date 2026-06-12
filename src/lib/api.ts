@@ -18,6 +18,7 @@ import type {
   PnlImpact,
   ClassificationStatus,
   BusinessUnit,
+  BusinessUnitRecord,
   LearningApplyScope,
   LearningRuleMatchType,
 } from "./types";
@@ -713,6 +714,10 @@ export function pullOllamaModel(
   })();
 
   return { cancel: () => controller.abort() };
+}
+
+export function listBusinessUnits() {
+  return fetchJSON<BusinessUnitRecord[]>("/api/business-units");
 }
 
 // ── Import API ────────────────────────────────────────────────────────────────

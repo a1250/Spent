@@ -28,7 +28,9 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -38,6 +40,7 @@ import {
   getImportBatch,
   commitImportBatch,
   getCategories,
+  listBusinessUnits,
   patchImportRow,
   type ImportUploadResult,
   type ImportRowPatch,
@@ -85,12 +88,6 @@ const CASH_FLOW_LABELS: Record<CashFlowType, string> = {
   non_cash: "ללא תנועת מזומן",
   pending: "ממתין",
   unknown: "לא ידוע",
-};
-
-const BUSINESS_UNIT_LABELS: Record<BusinessUnit, string> = {
-  personal: "אישי",
-  business: "עסקי",
-  investment: "השקעות",
 };
 
 const ADAPTER_LABELS: Record<ImportBatch["adapterKey"], string> = {
@@ -170,10 +167,17 @@ function EditRowDialog({
     );
   const needsMatcher = applyScope === "batch_similar" || saveAsRule;
   const categoryKind = row.direction === "income" ? "income" : "expense";
-  const { data: categories = [] } = useQuery({
+  const { data: allCategories = [] } = useQuery({
     queryKey: ["categories", categoryKind],
-    queryFn: () => getCategories(categoryKind, { leavesOnly: true }),
+    queryFn: () => getCategories(categoryKind),
   });
+  const { data: businessUnits = [] } = useQuery({
+    queryKey: ["business-units"],
+    queryFn: listBusinessUnits,
+  });
+  // Separate parents and leaves for grouped display
+  const parentCategories = allCategories.filter((c) => c.parentId === null);
+  const leafCategories = allCategories.filter((c) => c.parentId !== null);
 
   const mutation = useMutation({
     mutationFn: (patch: ImportRowPatch) =>
@@ -308,11 +312,22 @@ function EditRowDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">ללא קטגוריה</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={String(category.id)}>
-                    {category.name}
-                  </SelectItem>
-                ))}
+                {parentCategories.map((parent) => {
+                  const children = leafCategories.filter(
+                    (l) => l.parentId === parent.id
+                  );
+                  if (children.length === 0) return null;
+                  return (
+                    <SelectGroup key={parent.id}>
+                      <SelectLabel>{parent.name}</SelectLabel>
+                      {children.map((cat) => (
+                        <SelectItem key={cat.id} value={String(cat.id)}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -332,9 +347,9 @@ function EditRowDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">לא הוגדר</SelectItem>
-                {Object.entries(BUSINESS_UNIT_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
+                {businessUnits.map((bu) => (
+                  <SelectItem key={bu.slug} value={bu.slug}>
+                    {bu.label}
                   </SelectItem>
                 ))}
               </SelectContent>

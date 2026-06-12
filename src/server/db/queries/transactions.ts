@@ -182,11 +182,13 @@ function resolveSortSql(sort: string | undefined): string {
 const TRANSACTION_LIST_FROM = `
   FROM transactions t
   LEFT JOIN categories c ON t.category_id = c.id
-  LEFT JOIN bank_credentials bc ON t.credential_id = bc.id`;
+  LEFT JOIN bank_credentials bc ON t.credential_id = bc.id
+  LEFT JOIN import_rows ir ON t.import_row_id = ir.id`;
 
 const TRANSACTION_LIST_SELECT = `
   SELECT t.*, c.name AS category_name, c.color AS category_color,
-         bc.label AS account_label
+         bc.label AS account_label,
+         COALESCE(ir.source_category, ir.legacy_category) AS source_category
   ${TRANSACTION_LIST_FROM}`;
 
 export function queryTransactions(
@@ -583,6 +585,7 @@ interface TransactionRow {
   linked_transaction_id: number | null;
   import_batch_id: number | null;
   import_row_id: number | null;
+  source_category?: string | null;
   created_at: string;
   updated_at: string;
   category_name?: string | null;
@@ -631,6 +634,7 @@ function mapTransactionRow(row: unknown): TransactionWithCategory {
     linkedTransactionId: r.linked_transaction_id ?? null,
     importBatchId: r.import_batch_id ?? null,
     importRowId: r.import_row_id ?? null,
+    sourceCategory: r.source_category ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     categoryName: r.category_name ?? null,
@@ -673,6 +677,10 @@ interface TransactionContext {
   categorySource: "ai" | "user" | null;
   kind: "expense" | "income" | "transfer";
   provider: string;
+  financialNature: import("@/lib/types").FinancialNature;
+  cashFlowType: import("@/lib/types").CashFlowType;
+  pnlImpact: import("@/lib/types").PnlImpact;
+  businessUnit: import("@/lib/types").BusinessUnit | null;
 }
 
 export function getTransactionContext(
@@ -682,7 +690,11 @@ export function getTransactionContext(
   const row = getDb()
     .prepare(
       `SELECT id, description, category_id as categoryId,
-              category_source as categorySource, kind, provider
+              category_source as categorySource, kind, provider,
+              financial_nature as financialNature,
+              cash_flow_type as cashFlowType,
+              pnl_impact as pnlImpact,
+              business_unit as businessUnit
        FROM transactions WHERE workspace_id = ? AND id = ?`
     )
     .get(workspaceId, id) as TransactionContext | undefined;

@@ -34,6 +34,7 @@ function getFieldValue(row: RowToClassify, field: string): string {
   switch (field) {
     case "description":  return row.cleanDescription ?? "";
     case "counterparty": return row.counterparty ?? "";
+    case "source_category": return row.sourceCategory ?? "";
     case "account":      return row.account ?? "";
     case "amount_range": return String(row.amount ?? 0);
     default:             return "";
@@ -86,6 +87,7 @@ function deriveCashFlowType(
 export interface RowToClassify {
   cleanDescription: string | null;
   counterparty: string | null;
+  sourceCategory: string | null;
   account: string | null;
   amount: number | null;
   direction: TransactionDirection | null;

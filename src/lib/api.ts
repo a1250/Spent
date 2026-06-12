@@ -14,9 +14,12 @@ import type {
   ImportBatch,
   ImportRow,
   FinancialNature,
+  CashFlowType,
   PnlImpact,
   ClassificationStatus,
   BusinessUnit,
+  LearningApplyScope,
+  LearningRuleMatchType,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -312,6 +315,30 @@ export function updateTransactionCategory(id: number, categoryId: number) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ categoryId }),
+  });
+}
+
+export function updateTransactionLearning(
+  id: number,
+  learning: {
+    categoryId: number | null;
+    financialNature: FinancialNature;
+    cashFlowType: CashFlowType;
+    pnlImpact: PnlImpact;
+    businessUnit: BusinessUnit | null;
+    applyScope: LearningApplyScope;
+    saveAsRule: boolean;
+    ruleMatchType?: LearningRuleMatchType;
+  }
+) {
+  return fetchJSON<{
+    success: boolean;
+    affectedRows: number;
+    ruleId: number | null;
+  }>(`/api/transactions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ learning }),
   });
 }
 
@@ -739,6 +766,7 @@ export function commitImportBatch(batchId: number) {
 
 export interface ImportRowPatch {
   financialNature?: FinancialNature;
+  cashFlowType?: CashFlowType;
   pnlImpact?: PnlImpact;
   classificationStatus?: ClassificationStatus;
   businessUnit?: BusinessUnit | null;
@@ -747,6 +775,8 @@ export interface ImportRowPatch {
   duplicateAction?: "skip_duplicate" | "import_anyway" | "keep_pending";
   pendingAction?: "import_pending";
   saveAsRule?: boolean;
+  applyScope?: LearningApplyScope;
+  ruleMatchType?: LearningRuleMatchType;
 }
 
 export function patchImportRow(
@@ -754,7 +784,11 @@ export function patchImportRow(
   rowId: number,
   patch: ImportRowPatch
 ) {
-  return fetchJSON<{ success: boolean }>(
+  return fetchJSON<{
+    success: boolean;
+    affectedRows?: number;
+    ruleId?: number | null;
+  }>(
     `/api/import/${batchId}/rows/${rowId}`,
     {
       method: "PATCH",

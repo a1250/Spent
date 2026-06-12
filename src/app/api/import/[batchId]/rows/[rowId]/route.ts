@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import {
-  updateImportRowNormalized,
-  updateImportRowClassification,
   updateImportRowNotes,
   getImportRow,
 } from "@/server/db/queries/import-rows";
@@ -11,12 +9,15 @@ import {
   reviewDuplicateRow,
   type DuplicateReviewAction,
 } from "@/server/import/core/orchestrator";
-import { saveUserClassificationRule } from "@/server/db/queries/classification-rules";
+import { applyImportRowLearning } from "@/server/classification/learning-rules";
 import type {
   FinancialNature,
+  CashFlowType,
   PnlImpact,
   ClassificationStatus,
   BusinessUnit,
+  LearningApplyScope,
+  LearningRuleMatchType,
 } from "@/lib/types";
 
 export async function PATCH(
@@ -46,6 +47,7 @@ export async function PATCH(
 
     const body = (await request.json()) as {
       financialNature?: FinancialNature;
+      cashFlowType?: CashFlowType;
       pnlImpact?: PnlImpact;
       classificationStatus?: ClassificationStatus;
       businessUnit?: BusinessUnit | null;
@@ -54,6 +56,8 @@ export async function PATCH(
       duplicateAction?: DuplicateReviewAction;
       pendingAction?: "import_pending";
       saveAsRule?: boolean;
+      applyScope?: LearningApplyScope;
+      ruleMatchType?: LearningRuleMatchType;
     };
 
     if (body.duplicateAction) {
@@ -87,58 +91,52 @@ export async function PATCH(
       return NextResponse.json({ success: true, ...result });
     }
 
-    // Classification fields
-    if (body.financialNature || body.pnlImpact || body.classificationStatus) {
-      updateImportRowClassification(workspaceId, rowId, {
-        ...(body.financialNature && { financialNature: body.financialNature }),
-        ...(body.pnlImpact && { pnlImpact: body.pnlImpact }),
-        ...(body.classificationStatus && {
-          classificationStatus: body.classificationStatus,
-        }),
-      });
-    }
-
-    // Normalised fields
-    if ("businessUnit" in body || "categoryId" in body) {
-      updateImportRowNormalized(workspaceId, rowId, {
-        ...(body.businessUnit !== undefined && { businessUnit: body.businessUnit }),
-        ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
-      });
-    }
-
-    // Notes
     if ("notes" in body) {
       updateImportRowNotes(workspaceId, rowId, body.notes ?? null);
     }
 
-    if (body.saveAsRule) {
-      const updatedRow = getImportRow(workspaceId, rowId);
-      if (!updatedRow) {
-        return NextResponse.json({ error: "Row not found" }, { status: 404 });
-      }
-      const matchValue = (
-        updatedRow.counterparty ??
-        updatedRow.cleanDescription ??
-        ""
-      ).trim();
-      if (!matchValue) {
+    const isClassificationEdit =
+      body.financialNature !== undefined ||
+      body.cashFlowType !== undefined ||
+      body.pnlImpact !== undefined ||
+      body.classificationStatus !== undefined ||
+      body.businessUnit !== undefined ||
+      body.categoryId !== undefined ||
+      body.saveAsRule === true ||
+      body.applyScope !== undefined;
+    if (isClassificationEdit) {
+      if (
+        body.applyScope !== undefined &&
+        body.applyScope !== "row" &&
+        body.applyScope !== "batch_similar"
+      ) {
         return NextResponse.json(
-          { error: "Cannot save a rule without a merchant or description" },
+          { error: "Invalid apply scope" },
           { status: 400 }
         );
       }
-      saveUserClassificationRule(workspaceId, {
-        matchField: updatedRow.counterparty
-          ? "counterparty"
-          : "description",
-        matchValue,
-        financialNature: updatedRow.financialNature,
-        cashFlowType: updatedRow.cashFlowType,
-        pnlImpact: updatedRow.pnlImpact,
-        categoryId: updatedRow.categoryId,
-        direction: updatedRow.direction,
-        businessUnit: updatedRow.businessUnit,
-      });
+      const result = applyImportRowLearning(
+        workspaceId,
+        batchId,
+        rowId,
+        {
+          categoryId:
+            body.categoryId !== undefined ? body.categoryId : row.categoryId,
+          financialNature: body.financialNature ?? row.financialNature,
+          cashFlowType: body.cashFlowType ?? row.cashFlowType,
+          pnlImpact: body.pnlImpact ?? row.pnlImpact,
+          businessUnit:
+            body.businessUnit !== undefined
+              ? body.businessUnit
+              : row.businessUnit,
+        },
+        {
+          scope: body.applyScope ?? "row",
+          saveAsRule: body.saveAsRule === true,
+          matchType: body.ruleMatchType,
+        }
+      );
+      return NextResponse.json({ success: true, ...result });
     }
 
     return NextResponse.json({ success: true });

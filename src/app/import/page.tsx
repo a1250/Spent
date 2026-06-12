@@ -46,8 +46,11 @@ import type {
   ImportBatch,
   ImportRow,
   FinancialNature,
+  CashFlowType,
   PnlImpact,
   BusinessUnit,
+  LearningApplyScope,
+  LearningRuleMatchType,
 } from "@/lib/types";
 
 // ── Financial nature labels ───────────────────────────────────────────────────
@@ -73,6 +76,15 @@ const PNL_LABELS: Record<PnlImpact, string> = {
   yes: "כן",
   no: "לא",
   maybe: "אולי",
+};
+
+const CASH_FLOW_LABELS: Record<CashFlowType, string> = {
+  real_cash_in: "תזרים נכנס",
+  real_cash_out: "תזרים יוצא",
+  internal_transfer: "העברה פנימית",
+  non_cash: "ללא תנועת מזומן",
+  pending: "ממתין",
+  unknown: "לא ידוע",
 };
 
 const BUSINESS_UNIT_LABELS: Record<BusinessUnit, string> = {
@@ -136,6 +148,9 @@ function EditRowDialog({
   const [financialNature, setFinancialNature] = useState<FinancialNature>(
     row.financialNature
   );
+  const [cashFlowType, setCashFlowType] = useState<CashFlowType>(
+    row.cashFlowType
+  );
   const [pnlImpact, setPnlImpact] = useState<PnlImpact>(row.pnlImpact);
   const [categoryId, setCategoryId] = useState(
     row.categoryId == null ? "none" : String(row.categoryId)
@@ -144,7 +159,16 @@ function EditRowDialog({
     row.businessUnit ?? "none"
   );
   const [notes, setNotes] = useState(row.notes ?? "");
+  const [applyScope, setApplyScope] =
+    useState<LearningApplyScope>("row");
   const [saveAsRule, setSaveAsRule] = useState(false);
+  const [ruleMatchType, setRuleMatchType] =
+    useState<LearningRuleMatchType>(
+      row.counterparty?.trim()
+        ? "merchant_contains"
+        : "description_contains"
+    );
+  const needsMatcher = applyScope === "batch_similar" || saveAsRule;
   const categoryKind = row.direction === "income" ? "income" : "expense";
   const { data: categories = [] } = useQuery({
     queryKey: ["categories", categoryKind],
@@ -154,8 +178,16 @@ function EditRowDialog({
   const mutation = useMutation({
     mutationFn: (patch: ImportRowPatch) =>
       patchImportRow(batchId, row.id, patch),
-    onSuccess: () => {
-      toast.success("השורה עודכנה");
+    onSuccess: (result) => {
+      const suffix =
+        result.affectedRows && result.affectedRows > 1
+          ? ` (${result.affectedRows} שורות)`
+          : "";
+      toast.success(
+        result.ruleId
+          ? `התיקון נשמר ונוצר כלל עתידי${suffix}`
+          : `התיקון נשמר${suffix}`
+      );
       onSaved();
       onClose();
     },
@@ -167,12 +199,15 @@ function EditRowDialog({
   const handleSave = () => {
     mutation.mutate({
       financialNature,
+      cashFlowType,
       pnlImpact,
       classificationStatus: "manually_approved",
       categoryId: categoryId === "none" ? null : Number(categoryId),
       businessUnit: businessUnit === "none" ? null : businessUnit,
       notes: notes || null,
+      applyScope,
       saveAsRule,
+      ...(needsMatcher ? { ruleMatchType } : {}),
     });
   };
 
@@ -214,6 +249,27 @@ function EditRowDialog({
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(FINANCIAL_NATURE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>סוג תזרים</Label>
+            <Select
+              value={cashFlowType}
+              onValueChange={(value) =>
+                setCashFlowType(value as CashFlowType)
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(CASH_FLOW_LABELS).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
                   </SelectItem>
@@ -295,6 +351,26 @@ function EditRowDialog({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label>החלת התיקון</Label>
+            <Select
+              value={applyScope}
+              onValueChange={(value) =>
+                setApplyScope(value as LearningApplyScope)
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="row">רק על השורה הזו</SelectItem>
+                <SelectItem value="batch_similar">
+                  על כל השורות הדומות בייבוא הזה
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex items-center justify-between rounded-lg border px-3 py-2">
             <div>
               <Label htmlFor={`save-rule-${row.id}`}>שמור ככלל עתידי</Label>
@@ -308,6 +384,51 @@ function EditRowDialog({
               onCheckedChange={setSaveAsRule}
             />
           </div>
+
+          {needsMatcher && (
+            <div className="space-y-1.5">
+              <Label>אופן התאמה</Label>
+              <Select
+                value={ruleMatchType}
+                onValueChange={(value) =>
+                  setRuleMatchType(value as LearningRuleMatchType)
+                }
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {row.counterparty?.trim() && (
+                    <>
+                      <SelectItem value="merchant_contains">
+                        שם בית העסק מכיל
+                      </SelectItem>
+                      <SelectItem value="exact_merchant">
+                        שם בית עסק מדויק
+                      </SelectItem>
+                      <SelectItem value="exact_counterparty">
+                        צד נגדי מדויק
+                      </SelectItem>
+                    </>
+                  )}
+                  {(row.cleanDescription ?? row.rawDescription)?.trim() && (
+                    <SelectItem value="description_contains">
+                      התיאור מכיל
+                    </SelectItem>
+                  )}
+                  {(row.sourceCategory ?? row.legacyCategory)?.trim() && (
+                    <SelectItem value="source_category">
+                      קטגוריית מקור מדויקת
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                ההתאמה נגזרת מהשורה הנוכחית. קטגוריית המקור משמשת
+                להתאמה בלבד ואינה הופכת לקטגוריה סופית.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

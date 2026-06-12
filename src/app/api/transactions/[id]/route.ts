@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import {
-  updateTransactionCategory,
   setTransactionKind,
   setTransactionNeedsReview,
   getTransactionContext,
 } from "@/server/db/queries/transactions";
-import { recordMerchantCategory } from "@/server/lib/merchant-memory";
-import { recordCorrection } from "@/server/db/queries/category-corrections";
-import { getAllCategories } from "@/server/db/queries/categories";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
+import { applyTransactionLearning } from "@/server/classification/learning-rules";
+import type {
+  BusinessUnit,
+  CashFlowType,
+  FinancialNature,
+  LearningApplyScope,
+  LearningRuleMatchType,
+  PnlImpact,
+} from "@/lib/types";
 
 export async function PUT(
   request: Request,
@@ -28,39 +33,21 @@ export async function PUT(
   const numericId = Number(id);
 
   const before = getTransactionContext(workspaceId, numericId);
-  updateTransactionCategory(workspaceId, numericId, body.categoryId, "user");
-  setTransactionNeedsReview(workspaceId, numericId, false);
-
-  if (before && (before.kind === "expense" || before.kind === "income")) {
-    const category = getAllCategories(workspaceId).find(
-      (c) => c.id === body.categoryId
-    );
-    if (category && (category.kind === "expense" || category.kind === "income")) {
-      recordMerchantCategory(
-        workspaceId,
-        before.description,
-        body.categoryId,
-        category.kind,
-        "user"
-      );
-
-      // If the user just overrode an AI-set category, log it as a correction
-      // so the categorizer learns not to repeat the mistake on similar merchants.
-      if (
-        before.categorySource === "ai" &&
-        before.categoryId != null &&
-        before.categoryId !== body.categoryId
-      ) {
-        recordCorrection(
-          workspaceId,
-          before.description,
-          before.categoryId,
-          body.categoryId,
-          category.kind
-        );
-      }
-    }
+  if (!before) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  applyTransactionLearning(
+    workspaceId,
+    numericId,
+    {
+      categoryId: body.categoryId,
+      financialNature: before.financialNature,
+      cashFlowType: before.cashFlowType,
+      pnlImpact: before.pnlImpact,
+      businessUnit: before.businessUnit,
+    },
+    { scope: "row", saveAsRule: false }
+  );
 
   return NextResponse.json({ success: true });
 }
@@ -74,9 +61,48 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     kind?: unknown;
     approve?: unknown;
+    learning?: {
+      categoryId: number | null;
+      financialNature: FinancialNature;
+      cashFlowType: CashFlowType;
+      pnlImpact: PnlImpact;
+      businessUnit: BusinessUnit | null;
+      applyScope: LearningApplyScope;
+      saveAsRule: boolean;
+      ruleMatchType?: LearningRuleMatchType;
+    };
   };
 
   const numericId = Number(id);
+
+  if (body.learning) {
+    if (
+      body.learning.applyScope !== "row" &&
+      body.learning.applyScope !== "batch_similar"
+    ) {
+      return NextResponse.json(
+        { error: "Invalid apply scope" },
+        { status: 400 }
+      );
+    }
+    const result = applyTransactionLearning(
+      workspaceId,
+      numericId,
+      {
+        categoryId: body.learning.categoryId,
+        financialNature: body.learning.financialNature,
+        cashFlowType: body.learning.cashFlowType,
+        pnlImpact: body.learning.pnlImpact,
+        businessUnit: body.learning.businessUnit,
+      },
+      {
+        scope: body.learning.applyScope,
+        saveAsRule: body.learning.saveAsRule,
+        matchType: body.learning.ruleMatchType,
+      }
+    );
+    return NextResponse.json({ success: true, ...result });
+  }
 
   if (body.approve === true) {
     const ctx = getTransactionContext(workspaceId, numericId);
@@ -84,26 +110,8 @@ export async function PATCH(
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     setTransactionNeedsReview(workspaceId, numericId, false);
-    if (
-      ctx.categoryId != null &&
-      (ctx.kind === "expense" || ctx.kind === "income")
-    ) {
-      const category = getAllCategories(workspaceId).find(
-        (c) => c.id === ctx.categoryId
-      );
-      if (
-        category &&
-        (category.kind === "expense" || category.kind === "income")
-      ) {
-        recordMerchantCategory(
-          workspaceId,
-          ctx.description,
-          ctx.categoryId,
-          category.kind,
-          "approved-ai"
-        );
-      }
-    }
+    // Approval confirms this transaction only. Future learning requires the
+    // explicit "Save as rule" choice in the edit dialog.
     return NextResponse.json({ success: true });
   }
 

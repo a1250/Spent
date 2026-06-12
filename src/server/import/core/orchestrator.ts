@@ -221,6 +221,7 @@ export async function parseAndStageFile(
           {
             cleanDescription: normalized.cleanDescription,
             counterparty: normalized.counterparty,
+            sourceCategory: parsed.sourceCategory,
             account: normalized.account,
             amount: normalized.amount,
             direction: normalized.direction,

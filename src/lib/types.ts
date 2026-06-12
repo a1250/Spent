@@ -97,6 +97,7 @@ export interface Transaction {
   linkedTransactionId: number | null;
   importBatchId: number | null;
   importRowId: number | null;
+  sourceCategory: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -218,9 +219,37 @@ export interface ImportRow {
 
 // ── Classification rules ──────────────────────────────────────────────────────
 
-export type RuleMatchField = "description" | "counterparty" | "account" | "amount_range";
+export type RuleMatchField =
+  | "description"
+  | "counterparty"
+  | "source_category"
+  | "account"
+  | "amount_range";
 export type RuleMatchType = "exact" | "contains" | "starts_with" | "regex";
 export type RuleCreatedFrom = "seed" | "user" | "ai";
+export type RuleSource =
+  | "legacy_index"
+  | "legacy_seed"
+  | "provider_category"
+  | "user_approved"
+  | "ai_approved";
+
+export type LearningApplyScope = "row" | "batch_similar";
+
+export type LearningRuleMatchType =
+  | "exact_merchant"
+  | "merchant_contains"
+  | "description_contains"
+  | "exact_counterparty"
+  | "source_category";
+
+export interface ClassificationCorrection {
+  categoryId: number | null;
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  businessUnit: BusinessUnit | null;
+}
 
 export interface ClassificationRule {
   id: number;
@@ -239,6 +268,9 @@ export interface ClassificationRule {
   confidenceBoost: number;
   isActive: boolean;
   createdFrom: RuleCreatedFrom;
+  ruleSource: RuleSource;
+  createdFromImportRowId: number | null;
+  createdFromTransactionId: number | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -37,11 +37,11 @@ import {
   Tags,
   EyeOff,
   Eye,
+  Pencil,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
-  updateTransactionCategory,
   setTransactionKind,
   approveTransactionCategory,
   getCategories,
@@ -74,6 +74,7 @@ import type {
 } from "@/lib/types";
 import { BANK_PROVIDERS } from "@/lib/types";
 import type { Locale } from "@/i18n/routing";
+import { TransactionLearningDialog } from "@/components/transactions/transaction-learning-dialog";
 
 type Kind = "expense" | "income" | "transfer";
 
@@ -124,6 +125,10 @@ export function TransactionsTable({
   const locale = useLocale() as Locale;
   const queryClient = useQueryClient();
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [learningEdit, setLearningEdit] = useState<{
+    transaction: TransactionWithCategory;
+    initialCategoryId: number | null;
+  } | null>(null);
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const otherKinds: Record<Kind, Array<{ value: Kind; label: string }>> = {
@@ -141,16 +146,11 @@ export function TransactionsTable({
     ],
   };
 
-  const handleCategoryChange = async (txnId: number, categoryId: number) => {
-    setUpdatingId(txnId);
-    try {
-      await updateTransactionCategory(txnId, categoryId);
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["summary"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
-    } finally {
-      setUpdatingId(null);
-    }
+  const invalidateAfterLearning = () => {
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["summary"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["categories"] });
   };
 
   const handleKindChange = async (txnId: number, next: Kind) => {
@@ -339,7 +339,8 @@ export function TransactionsTable({
   };
 
   return (
-    <Card className="rounded-2xl border border-border bg-card shadow-none">
+    <>
+      <Card className="rounded-2xl border border-border bg-card shadow-none">
       <CardHeader>
         <div className="flex items-center justify-between gap-4">
           <CardTitle className="font-serif text-2xl font-normal">
@@ -601,7 +602,10 @@ export function TransactionsTable({
                                 <DropdownMenuItem
                                   key={cat.id}
                                   onClick={() =>
-                                    handleCategoryChange(txn.id, cat.id)
+                                    setLearningEdit({
+                                      transaction: txn,
+                                      initialCategoryId: cat.id,
+                                    })
                                   }
                                 >
                                   <div
@@ -655,6 +659,17 @@ export function TransactionsTable({
                             <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setLearningEdit({
+                                  transaction: txn,
+                                  initialCategoryId: txn.categoryId,
+                                })
+                              }
+                            >
+                              <Pencil className="me-2 h-3.5 w-3.5" />
+                              עריכת סיווג ולמידה
+                            </DropdownMenuItem>
                             {otherKinds[txn.kind].map((opt) => (
                               <DropdownMenuItem
                                 key={opt.value}
@@ -727,6 +742,21 @@ export function TransactionsTable({
           </>
         )}
       </CardContent>
-    </Card>
+      </Card>
+      {learningEdit && (
+        <TransactionLearningDialog
+          key={`${learningEdit.transaction.id}-${learningEdit.initialCategoryId ?? "none"}`}
+          transaction={learningEdit.transaction}
+          initialCategoryId={learningEdit.initialCategoryId}
+          categories={categoriesForKind(
+            learningEdit.transaction.chargedAmount > 0
+              ? "income"
+              : "expense"
+          )}
+          onClose={() => setLearningEdit(null)}
+          onSaved={invalidateAfterLearning}
+        />
+      )}
+    </>
   );
 }

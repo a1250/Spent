@@ -6,6 +6,7 @@ import type {
   RuleMatchField,
   RuleMatchType,
   RuleCreatedFrom,
+  RuleSource,
   FinancialNature,
   CashFlowType,
   PnlImpact,
@@ -30,6 +31,9 @@ const RULE_COLUMNS = `
   confidence_boost  as confidenceBoost,
   is_active         as isActive,
   created_from      as createdFrom,
+  rule_source       as ruleSource,
+  created_from_import_row_id as createdFromImportRowId,
+  created_from_transaction_id as createdFromTransactionId,
   created_at        as createdAt,
   updated_at        as updatedAt
 `.trim();
@@ -56,15 +60,27 @@ export function createClassificationRule(
     priority?: number;
     confidenceBoost?: number;
     createdFrom?: RuleCreatedFrom;
+    ruleSource?: RuleSource;
+    createdFromImportRowId?: number | null;
+    createdFromTransactionId?: number | null;
   }
 ): ClassificationRule {
+  const createdFrom = data.createdFrom ?? "user";
+  const ruleSource =
+    data.ruleSource ??
+    (createdFrom === "seed"
+      ? "legacy_index"
+      : createdFrom === "ai"
+        ? "ai_approved"
+        : "user_approved");
   const row = getDb()
     .prepare(
       `INSERT INTO classification_rules (
          workspace_id, match_field, match_type, match_value,
          financial_nature, cash_flow_type, pnl_impact, category_id,
-         direction, business_unit, priority, confidence_boost, created_from
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         direction, business_unit, priority, confidence_boost, created_from,
+         rule_source, created_from_import_row_id, created_from_transaction_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING ${RULE_COLUMNS}`
     )
     .get(
@@ -80,7 +96,10 @@ export function createClassificationRule(
       data.businessUnit ?? null,
       data.priority ?? 100,
       data.confidenceBoost ?? 0.2,
-      data.createdFrom ?? "user"
+      createdFrom,
+      ruleSource,
+      data.createdFromImportRowId ?? null,
+      data.createdFromTransactionId ?? null
     ) as Record<string, unknown>;
   return hydrate(row);
 }
@@ -89,6 +108,7 @@ export function saveUserClassificationRule(
   workspaceId: number,
   data: {
     matchField: RuleMatchField;
+    matchType: RuleMatchType;
     matchValue: string;
     financialNature: FinancialNature;
     cashFlowType: CashFlowType;
@@ -96,6 +116,8 @@ export function saveUserClassificationRule(
     categoryId: number | null;
     direction: TransactionDirection | null;
     businessUnit: BusinessUnit | null;
+    createdFromImportRowId?: number | null;
+    createdFromTransactionId?: number | null;
   }
 ): ClassificationRule {
   const existing = getDb()
@@ -104,7 +126,7 @@ export function saveUserClassificationRule(
        FROM classification_rules
        WHERE workspace_id = ?
          AND match_field = ?
-         AND match_type = 'exact'
+         AND match_type = ?
          AND match_value = ?
          AND created_from = 'user'
        ORDER BY id
@@ -113,13 +135,14 @@ export function saveUserClassificationRule(
     .get(
       workspaceId,
       data.matchField,
+      data.matchType,
       data.matchValue
     ) as { id: number } | undefined;
 
   if (!existing) {
     return createClassificationRule(workspaceId, {
       matchField: data.matchField,
-      matchType: "exact",
+      matchType: data.matchType,
       matchValue: data.matchValue,
       financialNature: data.financialNature,
       cashFlowType: data.cashFlowType,
@@ -127,9 +150,12 @@ export function saveUserClassificationRule(
       categoryId: data.categoryId,
       direction: data.direction,
       businessUnit: data.businessUnit,
-      priority: 50,
-      confidenceBoost: 1,
+      priority: 25,
+      confidenceBoost: 0.9,
       createdFrom: "user",
+      ruleSource: "user_approved",
+      createdFromImportRowId: data.createdFromImportRowId,
+      createdFromTransactionId: data.createdFromTransactionId,
     });
   }
 
@@ -140,10 +166,27 @@ export function saveUserClassificationRule(
     categoryId: data.categoryId,
     direction: data.direction,
     businessUnit: data.businessUnit,
-    priority: 50,
-    confidenceBoost: 1,
+    priority: 25,
+    confidenceBoost: 0.9,
     isActive: true,
   });
+  getDb()
+    .prepare(
+      `UPDATE classification_rules
+       SET rule_source = 'user_approved',
+           created_from_import_row_id =
+             COALESCE(created_from_import_row_id, ?),
+           created_from_transaction_id =
+             COALESCE(created_from_transaction_id, ?),
+           updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    )
+    .run(
+      data.createdFromImportRowId ?? null,
+      data.createdFromTransactionId ?? null,
+      workspaceId,
+      existing.id
+    );
   return hydrate(
     getDb()
       .prepare(
@@ -176,8 +219,9 @@ export function bulkInsertSeedRules(
     `INSERT OR IGNORE INTO classification_rules (
        workspace_id, match_field, match_type, match_value,
        financial_nature, cash_flow_type, pnl_impact, category_id,
-       direction, business_unit, priority, confidence_boost, created_from
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`
+       direction, business_unit, priority, confidence_boost, created_from,
+       rule_source
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed', 'legacy_index')`
   );
   const insert = db.transaction((items: typeof rules) => {
     let count = 0;

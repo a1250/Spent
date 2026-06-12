@@ -3,12 +3,14 @@ import type { ImportAdapter } from "./types";
 import { legacyExcelAdapter } from "./legacy-excel";
 import { creditCardIsracardAdapter } from "./credit-card-isracard";
 import { creditCardCalAdapter } from "./credit-card-cal";
+import { bankCheckingHebrewAdapter } from "./bank-checking-hebrew";
 import { normalizeHeader } from "./shared/headers";
 
 const ADAPTERS: ImportAdapter[] = [
   legacyExcelAdapter,
   creditCardIsracardAdapter,
   creditCardCalAdapter,
+  bankCheckingHebrewAdapter,
 ];
 
 export type AdapterDetectionResult =

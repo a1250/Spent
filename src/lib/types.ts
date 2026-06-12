@@ -47,12 +47,14 @@ export type TransactionDirection = "income" | "expense" | "transfer" | "unknown"
 export type ImportAdapterKey =
   | "legacy-excel"
   | "credit-card-isracard"
-  | "credit-card-cal";
+  | "credit-card-cal"
+  | "bank-checking-hebrew";
 
 export type ImportRowSourceType =
   | "legacy_excel"
   | "credit_card_isracard"
-  | "credit_card_cal";
+  | "credit_card_cal"
+  | "bank_checking_account";
 
 // ── Transaction ───────────────────────────────────────────────────────────────
 
@@ -204,6 +206,12 @@ export interface ImportRow {
   sourceCategory: string | null;
   currency: string | null;
   transactionStatus: "completed" | "pending";
+  valueDate: string | null;
+  balanceAfter: number | null;
+  reference: string | null;
+  bankAccountLabel: string | null;
+  bankAccountNumberMasked: string | null;
+  sourceBank: string | null;
   createdAt: string;
   updatedAt: string;
 }

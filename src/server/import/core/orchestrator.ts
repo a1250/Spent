@@ -66,16 +66,24 @@ function dedupHashForRow(
     );
   }
 
+  const sourceIdentity = [
+    parsed.sourceType,
+    parsed.bankAccountNumberMasked ??
+      parsed.cardLast4 ??
+      parsed.account ??
+      "",
+    parsed.originalCurrency ?? parsed.currency ?? "",
+  ];
+  if (parsed.sourceType === "bank_checking_account") {
+    sourceIdentity.push(parsed.reference ?? "", parsed.valueDate ?? "");
+  }
+
   return computeDedupHash(
     normalized.date,
     parsed.originalAmount ?? normalized.amount,
     normalized.cleanDescription,
     normalized.direction,
-    [
-      parsed.sourceType,
-      parsed.cardLast4 ?? parsed.account ?? "",
-      parsed.originalCurrency ?? parsed.currency ?? "",
-    ]
+    sourceIdentity
   );
 }
 
@@ -114,7 +122,7 @@ export async function parseAndStageFile(
   if (detection.status === "unsupported") {
     throw new ImportDetectionError(
       "unsupported_import_format",
-      "Unsupported import format. Use a legacy Excel, Isracard, or CAL transaction export."
+      "Unsupported import format. Use a legacy Excel, Isracard, CAL, or Hebrew bank checking export."
     );
   }
 
@@ -168,6 +176,12 @@ export async function parseAndStageFile(
           sourceCategory: parsed.sourceCategory,
           currency: parsed.currency,
           transactionStatus: parsed.transactionStatus,
+          valueDate: parsed.valueDate,
+          balanceAfter: parsed.balanceAfter,
+          reference: parsed.reference,
+          bankAccountLabel: parsed.bankAccountLabel,
+          bankAccountNumberMasked: parsed.bankAccountNumberMasked,
+          sourceBank: parsed.sourceBank,
           notes: parsed.notes,
         });
 
@@ -472,7 +486,7 @@ export function importPendingRow(
     throw new Error(`Import row ${rowId} not found`);
   }
   if (row.transactionStatus !== "pending") {
-    throw new Error("Row is not a pending credit-card transaction");
+    throw new Error("Row is not a pending imported transaction");
   }
   if (row.importStatus === "imported") {
     throw new Error("Pending row was already imported");
@@ -562,7 +576,7 @@ function insertTransactionFromImportRow(
          dedup_hash, dedup_sequence, kind, needs_review,
          financial_nature, cash_flow_type, pnl_impact,
          classification_status, confidence_score, ai_explanation,
-         business_unit, counterparty, clean_description,
+         business_unit, counterparty, clean_description, original_balance,
          import_batch_id, import_row_id
        ) VALUES (
          @workspaceId, @accountNumber, @date, @processedDate,
@@ -575,7 +589,7 @@ function insertTransactionFromImportRow(
          @dedupHash, @dedupSequence, @kind, @needsReview,
          @financialNature, @cashFlowType, @pnlImpact,
          @classificationStatus, @confidenceScore, @aiExplanation,
-         @businessUnit, @counterparty, @cleanDescription,
+         @businessUnit, @counterparty, @cleanDescription, @originalBalance,
          @importBatchId, @importRowId
        )
        ON CONFLICT(workspace_id, dedup_hash, dedup_sequence) DO NOTHING
@@ -583,9 +597,13 @@ function insertTransactionFromImportRow(
     )
     .get({
       workspaceId,
-      accountNumber: row.cardLast4 ?? row.account ?? "imported",
+      accountNumber:
+        row.bankAccountNumberMasked ??
+        row.cardLast4 ??
+        row.account ??
+        "imported",
       date: row.date,
-      processedDate: row.billingDate ?? row.date,
+      processedDate: row.valueDate ?? row.billingDate ?? row.date,
       originalAmount,
       originalCurrency: row.originalCurrency ?? row.currency ?? "ILS",
       chargedAmount,
@@ -596,10 +614,11 @@ function insertTransactionFromImportRow(
         ? "installments"
         : "normal",
       status,
-      identifier: row.voucherNumber ?? row.digitalWalletCardId,
+      identifier:
+        row.reference ?? row.voucherNumber ?? row.digitalWalletCardId,
       categoryId: row.categoryId,
       categorySource: row.categoryId == null ? null : "user",
-      provider: providerForSource(row.sourceType),
+      provider: row.sourceBank ?? providerForSource(row.sourceType),
       syncRunId,
       dedupHash,
       dedupSequence,
@@ -619,6 +638,7 @@ function insertTransactionFromImportRow(
       businessUnit: row.businessUnit,
       counterparty: row.counterparty,
       cleanDescription: row.cleanDescription,
+      originalBalance: row.balanceAfter,
       importBatchId: batchId,
       importRowId: row.id,
     }) as { id: number } | undefined;
@@ -646,7 +666,7 @@ function getOrCreateImportSyncRun(
     .filter((date): date is string => Boolean(date))
     .sort();
   const provider = rows[0]
-    ? providerForSource(rows[0].sourceType)
+    ? rows[0].sourceBank ?? providerForSource(rows[0].sourceType)
     : "file_import";
   return (
     db

@@ -14,7 +14,6 @@ import {
   Copy,
   Ban,
   PlusCircle,
-  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +85,7 @@ const ADAPTER_LABELS: Record<ImportBatch["adapterKey"], string> = {
   "legacy-excel": "Legacy Excel",
   "credit-card-isracard": "Isracard",
   "credit-card-cal": "CAL",
+  "bank-checking-hebrew": "Bank checking",
 };
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ function EditRowDialog({
             <div>
               <Label htmlFor={`save-rule-${row.id}`}>שמור ככלל עתידי</Label>
               <p className="text-xs text-muted-foreground">
-                רק כלל שאושר כאן יוכל לסווג שורות אשראי אוטומטית
+                רק כלל שאושר כאן יוכל לסווג שורות מיובאות אוטומטית
               </p>
             </div>
             <Switch
@@ -347,7 +347,7 @@ function SummaryCards({
     { label: "שורות", value: result.totalRows, color: "text-foreground" },
     { label: "סווגו אוטומטית", value: result.autoClassified, color: "text-blue-600 dark:text-blue-400" },
     { label: "דורשות בדיקה", value: result.needsReview, color: "text-amber-600 dark:text-amber-400" },
-    { label: "ממתינות לחיוב", value: pendingCount, color: "text-violet-600 dark:text-violet-400" },
+    { label: "ממתינות", value: pendingCount, color: "text-violet-600 dark:text-violet-400" },
     { label: "כפולות", value: result.duplicates, color: "text-muted-foreground" },
     { label: "דולגו", value: result.skipped, color: "text-muted-foreground" },
   ];
@@ -466,6 +466,11 @@ function ReviewTable({
                       חיוב: {row.billingDate}
                     </div>
                   )}
+                  {row.valueDate && row.valueDate !== row.date && (
+                    <div className="mt-0.5 text-[10px]">
+                      ערך: {row.valueDate}
+                    </div>
+                  )}
                 </td>
                 <td className="max-w-[220px] px-3 py-2">
                   <div className="truncate font-medium" title={row.cleanDescription ?? undefined}>
@@ -480,6 +485,18 @@ function ReviewTable({
                     <div className="mt-0.5 text-[10px] text-muted-foreground">
                       כרטיס •••• {row.cardLast4}
                       {row.transactionType ? ` · ${row.transactionType}` : ""}
+                    </div>
+                  )}
+                  {(row.bankAccountLabel || row.bankAccountNumberMasked) && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      {row.bankAccountLabel ?? "חשבון"}{" "}
+                      {row.bankAccountNumberMasked ?? ""}
+                      {row.reference ? ` · אסמכתה ${row.reference}` : ""}
+                    </div>
+                  )}
+                  {row.paymentChannel && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      ערוץ: {row.paymentChannel}
                     </div>
                   )}
                 </td>
@@ -506,6 +523,15 @@ function ReviewTable({
                         {row.originalCurrency}
                       </div>
                     )}
+                  {row.balanceAfter != null && (
+                    <div className="text-[10px] text-muted-foreground">
+                      יתרה: ₪
+                      {row.balanceAfter.toLocaleString("he-IL", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {row.sourceCategory || row.legacyCategory ? (
@@ -542,7 +568,7 @@ function ReviewTable({
                         variant="outline"
                         className="border-violet-500/40 text-violet-600 dark:text-violet-400"
                       >
-                        ממתינה לחיוב
+                        ממתינה
                       </Badge>
                     )}
                   </div>
@@ -621,10 +647,10 @@ function PendingTransactionsTable({
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2">
-        <CreditCard className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+        <Clock className="h-4 w-4 text-violet-600 dark:text-violet-400" />
         <div>
           <h3 className="font-medium">
-            עסקאות אשראי ממתינות ({pendingRows.length})
+            עסקאות ממתינות ({pendingRows.length})
           </h3>
           <p className="text-xs text-muted-foreground">
             commit רגיל אינו מכניס אותן להוצאות. הייבוא מתבצע רק בפעולה מפורשת.
@@ -640,7 +666,7 @@ function PendingTransactionsTable({
               <th className="px-3 py-2 text-start font-medium">תאריך</th>
               <th className="px-3 py-2 text-start font-medium">בית עסק</th>
               <th className="px-3 py-2 text-end font-medium">סכום</th>
-              <th className="px-3 py-2 text-start font-medium">כרטיס</th>
+              <th className="px-3 py-2 text-start font-medium">חשבון / כרטיס</th>
               <th className="px-3 py-2 text-start font-medium">Audit status</th>
               <th className="px-3 py-2 text-start font-medium">פעולה</th>
             </tr>
@@ -660,7 +686,8 @@ function PendingTransactionsTable({
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-end font-mono">
-                  -{row.currency === "ILS" || !row.currency
+                  {row.direction === "income" ? "+" : "-"}
+                  {row.currency === "ILS" || !row.currency
                     ? "₪"
                     : `${row.currency} `}
                   {row.amount?.toLocaleString("he-IL", {
@@ -669,7 +696,8 @@ function PendingTransactionsTable({
                   })}
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">
-                  {row.cardLast4 ? `•••• ${row.cardLast4}` : "—"}
+                  {row.bankAccountNumberMasked ??
+                    (row.cardLast4 ? `•••• ${row.cardLast4}` : "—")}
                 </td>
                 <td className="px-3 py-2">
                   <Badge variant="secondary">{row.importStatus}</Badge>
@@ -953,7 +981,7 @@ function UploadZone({
                 או לחץ לבחירת קובץ
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Legacy Excel, Isracard או CAL. הפורמט מזוהה אוטומטית.
+                Legacy Excel, Isracard, CAL או קובץ עובר ושב. הפורמט מזוהה אוטומטית.
               </p>
             </div>
           </>
@@ -1109,7 +1137,7 @@ function ReviewView({
           )}
           {pendingCount > 0 && (
             <div className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-400">
-              <CreditCard className="h-4 w-4" />
+              <Clock className="h-4 w-4" />
               <span>{pendingCount} עסקאות ממתינות יישארו מחוץ ל-transactions</span>
             </div>
           )}

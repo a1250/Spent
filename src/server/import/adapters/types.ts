@@ -39,6 +39,12 @@ export interface ParsedImportRow {
   currency: string | null;
   transactionStatus: "completed" | "pending";
   notes: string | null;
+  valueDate?: string | null;
+  balanceAfter?: number | null;
+  reference?: string | null;
+  bankAccountLabel?: string | null;
+  bankAccountNumberMasked?: string | null;
+  sourceBank?: string | null;
 
   financialNature?: FinancialNature;
   cashFlowType?: CashFlowType;

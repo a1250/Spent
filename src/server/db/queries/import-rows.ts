@@ -58,6 +58,12 @@ const ROW_COLUMNS = `
   r.source_category       as sourceCategory,
   r.currency,
   r.transaction_status    as transactionStatus,
+  r.value_date            as valueDate,
+  r.balance_after         as balanceAfter,
+  r.reference,
+  r.bank_account_label    as bankAccountLabel,
+  r.bank_account_number_masked as bankAccountNumberMasked,
+  r.source_bank           as sourceBank,
   r.created_at            as createdAt,
   r.updated_at            as updatedAt
 `.trim();
@@ -178,6 +184,12 @@ export function insertImportRow(
     sourceCategory?: string | null;
     currency?: string | null;
     transactionStatus?: "completed" | "pending";
+    valueDate?: string | null;
+    balanceAfter?: number | null;
+    reference?: string | null;
+    bankAccountLabel?: string | null;
+    bankAccountNumberMasked?: string | null;
+    sourceBank?: string | null;
     notes?: string | null;
   }
 ): ImportRow {
@@ -192,10 +204,13 @@ export function insertImportRow(
          digital_wallet_card_id, voucher_number,
          original_amount, original_currency, fx_rate,
          transaction_type, payment_channel, source_category,
-         currency, transaction_status
+         currency, transaction_status,
+         value_date, balance_after, reference,
+         bank_account_label, bank_account_number_masked, source_bank
        ) VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?
        )
        RETURNING ${ROW_COLUMNS.replace(/r\./g, "")}`
     )
@@ -226,7 +241,13 @@ export function insertImportRow(
       data.paymentChannel ?? null,
       data.sourceCategory ?? null,
       data.currency ?? null,
-      data.transactionStatus ?? "completed"
+      data.transactionStatus ?? "completed",
+      data.valueDate ?? null,
+      data.balanceAfter ?? null,
+      data.reference ?? null,
+      data.bankAccountLabel ?? null,
+      data.bankAccountNumberMasked ?? null,
+      data.sourceBank ?? null
     ) as Record<string, unknown>;
   return hydrate(row);
 }

@@ -118,7 +118,21 @@ export interface ImportBatch {
   committedAt: string | null;
 }
 
-export type ImportRowStatus = "pending" | "approved" | "rejected" | "imported";
+export type ImportRowStatus =
+  | "pending"
+  | "pending_duplicate"
+  | "approved"
+  | "rejected"
+  | "skipped_duplicate"
+  | "imported";
+
+export interface DuplicateTransactionMatch {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  dedupSequence: number;
+}
 
 export interface ImportRow {
   id: number;
@@ -152,6 +166,10 @@ export interface ImportRow {
   dedupHash: string | null;
   isDuplicate: boolean;
   duplicateOfTransactionId: number | null;
+  duplicateReason: string | null;
+  duplicateMatch: DuplicateTransactionMatch | null;
+  nextDedupSequence: number | null;
+  canImportDuplicate: boolean;
   // Pipeline
   importStatus: ImportRowStatus;
   transactionId: number | null;

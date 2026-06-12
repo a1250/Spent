@@ -732,6 +732,7 @@ export interface ImportRowPatch {
   businessUnit?: BusinessUnit | null;
   notes?: string | null;
   categoryId?: number | null;
+  duplicateAction?: "skip_duplicate" | "import_anyway" | "keep_pending";
 }
 
 export function patchImportRow(

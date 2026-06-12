@@ -58,6 +58,84 @@ function hydrate(row: Record<string, unknown>): ImportRow {
   } as unknown as ImportRow;
 }
 
+function enrichDuplicateDetails(rows: ImportRow[]): ImportRow[] {
+  const duplicateRows = rows.filter((row) => row.isDuplicate && row.dedupHash);
+  if (duplicateRows.length === 0) {
+    return rows.map((row) => ({
+      ...row,
+      duplicateReason: null,
+      duplicateMatch: null,
+      nextDedupSequence: null,
+      canImportDuplicate: false,
+    }));
+  }
+
+  const workspaceId = duplicateRows[0].workspaceId;
+  const hashes = [...new Set(duplicateRows.map((row) => row.dedupHash as string))];
+  type MatchRow = {
+    id: number;
+    date: string;
+    description: string;
+    amount: number;
+    dedupHash: string;
+    dedupSequence: number;
+  };
+  const matches: MatchRow[] = [];
+  for (let start = 0; start < hashes.length; start += 400) {
+    const hashChunk = hashes.slice(start, start + 400);
+    const placeholders = hashChunk.map(() => "?").join(", ");
+    matches.push(
+      ...(getDb()
+        .prepare(
+          `SELECT id, date, description, charged_amount as amount,
+                  dedup_hash as dedupHash, dedup_sequence as dedupSequence
+           FROM transactions
+           WHERE workspace_id = ? AND dedup_hash IN (${placeholders})
+           ORDER BY dedup_hash, dedup_sequence, id`
+        )
+        .all(workspaceId, ...hashChunk) as MatchRow[])
+    );
+  }
+
+  const firstMatchByHash = new Map<string, (typeof matches)[number]>();
+  const maxSequenceByHash = new Map<string, number>();
+  for (const match of matches) {
+    if (!firstMatchByHash.has(match.dedupHash)) {
+      firstMatchByHash.set(match.dedupHash, match);
+    }
+    maxSequenceByHash.set(
+      match.dedupHash,
+      Math.max(maxSequenceByHash.get(match.dedupHash) ?? -1, match.dedupSequence)
+    );
+  }
+
+  return rows.map((row) => {
+    const match = row.dedupHash ? firstMatchByHash.get(row.dedupHash) : undefined;
+    return {
+      ...row,
+      duplicateReason: row.isDuplicate ? "Exact dedup hash match" : null,
+      duplicateMatch: match
+        ? {
+            id: match.id,
+            date: match.date,
+            description: match.description,
+            amount: match.amount,
+            dedupSequence: match.dedupSequence,
+          }
+        : null,
+      nextDedupSequence:
+        row.dedupHash && maxSequenceByHash.has(row.dedupHash)
+          ? (maxSequenceByHash.get(row.dedupHash) as number) + 1
+          : row.isDuplicate
+            ? 0
+            : null,
+      canImportDuplicate: Boolean(
+        row.isDuplicate && row.date && row.amount != null && row.dedupHash
+      ),
+    };
+  });
+}
+
 export function insertImportRow(
   batchId: number,
   workspaceId: number,
@@ -129,7 +207,7 @@ export function listImportRows(
        ORDER BY r.raw_row_number ASC`
     )
     .all(...params) as Record<string, unknown>[];
-  return rows.map(hydrate);
+  return enrichDuplicateDetails(rows.map(hydrate));
 }
 
 export function getImportRow(workspaceId: number, rowId: number): ImportRow | null {
@@ -139,7 +217,7 @@ export function getImportRow(workspaceId: number, rowId: number): ImportRow | nu
        WHERE r.workspace_id = ? AND r.id = ?`
     )
     .get(workspaceId, rowId) as Record<string, unknown> | undefined;
-  return row ? hydrate(row) : null;
+  return row ? enrichDuplicateDetails([hydrate(row)])[0] : null;
 }
 
 export function updateImportRowNormalized(
@@ -211,10 +289,18 @@ export function markImportRowDedup(
     .prepare(
       `UPDATE import_rows
        SET dedup_hash = ?, is_duplicate = ?, duplicate_of_transaction_id = ?,
+           import_status = CASE WHEN ? = 1 THEN 'pending_duplicate' ELSE import_status END,
            updated_at = datetime('now')
        WHERE workspace_id = ? AND id = ?`
     )
-    .run(dedupHash, isDuplicate ? 1 : 0, duplicateOfTransactionId, workspaceId, rowId);
+    .run(
+      dedupHash,
+      isDuplicate ? 1 : 0,
+      duplicateOfTransactionId,
+      isDuplicate ? 1 : 0,
+      workspaceId,
+      rowId
+    );
 }
 
 export function commitImportRow(
@@ -236,6 +322,36 @@ export function rejectImportRow(workspaceId: number, rowId: number): void {
     .prepare(
       `UPDATE import_rows
        SET import_status = 'rejected', updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    )
+    .run(workspaceId, rowId);
+}
+
+export function markImportRowPendingDuplicate(
+  workspaceId: number,
+  rowId: number,
+  duplicateOfTransactionId: number | null
+): void {
+  getDb()
+    .prepare(
+      `UPDATE import_rows
+       SET is_duplicate = 1,
+           duplicate_of_transaction_id = COALESCE(?, duplicate_of_transaction_id),
+           import_status = 'pending_duplicate',
+           updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    )
+    .run(duplicateOfTransactionId, workspaceId, rowId);
+}
+
+export function markImportRowSkippedDuplicate(
+  workspaceId: number,
+  rowId: number
+): void {
+  getDb()
+    .prepare(
+      `UPDATE import_rows
+       SET import_status = 'skipped_duplicate', updated_at = datetime('now')
        WHERE workspace_id = ? AND id = ?`
     )
     .run(workspaceId, rowId);

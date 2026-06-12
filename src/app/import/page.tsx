@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   Upload,
@@ -12,7 +11,9 @@ import {
   Clock,
   ArrowLeft,
   Pencil,
-  X,
+  Copy,
+  Ban,
+  PlusCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -453,6 +454,188 @@ function ReviewTable({
   );
 }
 
+function PotentialDuplicatesTable({
+  rows,
+  batchId,
+  onRowUpdated,
+}: {
+  rows: ImportRow[];
+  batchId: number;
+  onRowUpdated: () => void;
+}) {
+  const [pendingRowId, setPendingRowId] = useState<number | null>(null);
+  const duplicateRows = rows.filter((row) => row.isDuplicate);
+
+  const mutation = useMutation({
+    mutationFn: ({
+      rowId,
+      duplicateAction,
+    }: {
+      rowId: number;
+      duplicateAction: NonNullable<ImportRowPatch["duplicateAction"]>;
+    }) => patchImportRow(batchId, rowId, { duplicateAction }),
+    onMutate: ({ rowId }) => setPendingRowId(rowId),
+    onSuccess: (_result, variables) => {
+      const messages = {
+        skip_duplicate: "השורה סומנה ככפולה שדולגה",
+        import_anyway: "הכפולה יובאה עם רצף חדש",
+        keep_pending: "השורה נשארה ממתינה לבדיקה",
+      };
+      toast.success(messages[variables.duplicateAction]);
+      onRowUpdated();
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "שגיאה בטיפול בכפולה");
+    },
+    onSettled: () => setPendingRowId(null),
+  });
+
+  if (duplicateRows.length === 0) return null;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Copy className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <h3 className="font-medium">כפילויות אפשריות ({duplicateRows.length})</h3>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-amber-500/30">
+        <table className="w-full min-w-[1180px] text-sm">
+          <thead>
+            <tr className="border-b bg-amber-500/5 text-xs text-muted-foreground">
+              <th className="px-3 py-2 text-start font-medium">שורת ייבוא</th>
+              <th className="px-3 py-2 text-start font-medium">שורת מקור</th>
+              <th className="px-3 py-2 text-start font-medium">תאריך</th>
+              <th className="px-3 py-2 text-start font-medium">תיאור / בית עסק</th>
+              <th className="px-3 py-2 text-end font-medium">סכום</th>
+              <th className="px-3 py-2 text-start font-medium">קטגוריה ישנה</th>
+              <th className="px-3 py-2 text-start font-medium">סיבת התאמה</th>
+              <th className="px-3 py-2 text-start font-medium">תנועה תואמת</th>
+              <th className="px-3 py-2 text-center font-medium">רצף הבא</th>
+              <th className="px-3 py-2 text-start font-medium">החלטה</th>
+            </tr>
+          </thead>
+          <tbody>
+            {duplicateRows.map((row) => {
+              const isPending = pendingRowId === row.id;
+              return (
+                <tr key={row.id} className="border-b last:border-0">
+                  <td className="px-3 py-2 font-mono text-xs">#{row.id}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {row.rawRowNumber}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                    {row.date}
+                  </td>
+                  <td className="max-w-[260px] px-3 py-2">
+                    <div
+                      className="truncate"
+                      title={row.cleanDescription ?? undefined}
+                    >
+                      {row.counterparty ??
+                        row.cleanDescription ??
+                        row.rawDescription}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-end font-mono">
+                    {row.direction === "expense" ? "-" : "+"}₪
+                    {row.amount?.toLocaleString("he-IL", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    {row.legacyCategory ?? "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="text-xs">
+                      {row.duplicateReason ?? "התאמה מדויקת"}
+                    </div>
+                    <code className="block max-w-[150px] truncate text-[10px] text-muted-foreground">
+                      {row.dedupHash}
+                    </code>
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    {row.duplicateMatch ? (
+                      <>
+                        <div>
+                          #{row.duplicateMatch.id} · {row.duplicateMatch.date}
+                        </div>
+                        <div className="max-w-[220px] truncate text-muted-foreground">
+                          {row.duplicateMatch.description}
+                        </div>
+                      </>
+                    ) : (
+                      "לא נמצאה"
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center font-mono">
+                    {row.canImportDuplicate ? row.nextDedupSequence : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.importStatus === "pending_duplicate" ? (
+                      <div className="flex min-w-max items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() =>
+                            mutation.mutate({
+                              rowId: row.id,
+                              duplicateAction: "skip_duplicate",
+                            })
+                          }
+                        >
+                          <Ban className="me-1 h-3.5 w-3.5" />
+                          דלג
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={isPending || !row.canImportDuplicate}
+                          onClick={() =>
+                            mutation.mutate({
+                              rowId: row.id,
+                              duplicateAction: "import_anyway",
+                            })
+                          }
+                        >
+                          <PlusCircle className="me-1 h-3.5 w-3.5" />
+                          ייבא בכל זאת
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() =>
+                            mutation.mutate({
+                              rowId: row.id,
+                              duplicateAction: "keep_pending",
+                            })
+                          }
+                        >
+                          השאר ממתין
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">
+                        {row.importStatus === "skipped_duplicate"
+                          ? "דולג ככפול"
+                          : row.importStatus === "imported"
+                            ? `יובא · תנועה #${row.transactionId}`
+                            : row.importStatus}
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 // ── Upload zone ───────────────────────────────────────────────────────────────
 
 function UploadZone({
@@ -529,14 +712,18 @@ function UploadZone({
         )}
       </div>
 
-      <BatchHistoryList />
+      <BatchHistoryList onSelect={onUploaded} />
     </div>
   );
 }
 
 // ── Batch history ─────────────────────────────────────────────────────────────
 
-function BatchHistoryList() {
+function BatchHistoryList({
+  onSelect,
+}: {
+  onSelect: (result: ImportUploadResult) => void;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ["import-batches"],
     queryFn: listImportBatches,
@@ -552,20 +739,43 @@ function BatchHistoryList() {
       <h3 className="text-sm font-medium text-muted-foreground">ייבואים קודמים</h3>
       <ul className="divide-y divide-border rounded-xl border">
         {batches.map((b) => (
-          <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-sm">
-                <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{b.sourceFilename}</span>
+          <li key={b.id}>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-muted/30"
+              onClick={() =>
+                onSelect({
+                  batch: b,
+                  summary: {
+                    totalRows: b.totalRows,
+                    autoClassified: Math.max(
+                      0,
+                      b.totalRows - b.needsReviewRows - b.duplicateRows
+                    ),
+                    needsReview: b.needsReviewRows,
+                    duplicates: b.duplicateRows,
+                    skipped: b.skippedRows,
+                  },
+                })
+              }
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-medium">{b.sourceFilename}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {new Date(b.createdAt).toLocaleDateString("he-IL")} ·{" "}
+                  {b.totalRows} שורות
+                </div>
               </div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {new Date(b.createdAt).toLocaleDateString("he-IL")} ·{" "}
-                {b.totalRows} שורות
-              </div>
-            </div>
-            <Badge variant={b.status === "committed" ? "default" : "secondary"} className="text-xs">
-              {b.status === "committed" ? "יובא" : b.status}
-            </Badge>
+              <Badge
+                variant={b.status === "committed" ? "default" : "secondary"}
+                className="text-xs"
+              >
+                {b.status === "committed" ? "יובא" : b.status}
+              </Badge>
+            </button>
           </li>
         ))}
       </ul>
@@ -656,6 +866,17 @@ function ReviewView({
         batchId={initialBatch.id}
         committed={committed}
         onRowUpdated={() => { void refetch(); }}
+      />
+
+      <PotentialDuplicatesTable
+        rows={rows}
+        batchId={initialBatch.id}
+        onRowUpdated={() => {
+          void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          void queryClient.invalidateQueries({ queryKey: ["home"] });
+          void queryClient.invalidateQueries({ queryKey: ["import-batches"] });
+          void refetch();
+        }}
       />
     </div>
   );

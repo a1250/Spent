@@ -6,6 +6,10 @@ import {
   updateImportRowNotes,
   getImportRow,
 } from "@/server/db/queries/import-rows";
+import {
+  reviewDuplicateRow,
+  type DuplicateReviewAction,
+} from "@/server/import/core/orchestrator";
 import type {
   FinancialNature,
   PnlImpact,
@@ -45,7 +49,28 @@ export async function PATCH(
       businessUnit?: BusinessUnit | null;
       notes?: string | null;
       categoryId?: number | null;
+      duplicateAction?: DuplicateReviewAction;
     };
+
+    if (body.duplicateAction) {
+      if (
+        !["skip_duplicate", "import_anyway", "keep_pending"].includes(
+          body.duplicateAction
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid duplicate action" },
+          { status: 400 }
+        );
+      }
+      const result = reviewDuplicateRow(
+        batchId,
+        rowId,
+        workspaceId,
+        body.duplicateAction
+      );
+      return NextResponse.json({ success: true, ...result });
+    }
 
     // Classification fields
     if (body.financialNature || body.pnlImpact || body.classificationStatus) {

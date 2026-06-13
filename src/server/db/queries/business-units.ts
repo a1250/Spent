@@ -30,6 +30,7 @@ const DEFAULT_UNITS: Array<{
   { slug: "umino",      label: "Umino",       color: "#7D90CA", sortOrder: 20  },
   { slug: "paseo",      label: "Paseo",       color: "#E7A875", sortOrder: 30  },
   { slug: "topsoccer",  label: "Top Soccer",  color: "#7BB36B", sortOrder: 40  },
+  { slug: "playground", label: "Playground",  color: "#8BBBB8", sortOrder: 45  },
   { slug: "mytiv",      label: "Mytiv",       color: "#E499A4", sortOrder: 50  },
   { slug: "cctv360",    label: "CCTV 360",    color: "#65C1D1", sortOrder: 60  },
   { slug: "gazebo",     label: "Gazebo",      color: "#D692BF", sortOrder: 70  },

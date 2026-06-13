@@ -128,6 +128,8 @@ const SEED_LEAVES: SeedLeaf[] = [
   { parent: "Personal",            name: "Personal Care",          kind: "expense", color: "#D5A4D7", icon: "sparkles",       description: "Hair, beauty, spa, cosmetics, and grooming." },
   { parent: "Personal",            name: "Education",              kind: "expense", color: "#94A0DD", icon: "graduation-cap", description: "Tuition, courses, books, and school supplies." },
   { parent: "Personal",            name: "Home & Bills",           kind: "expense", color: "#A4C386", icon: "home",           description: "Personal home rent, utilities, repairs, and household bills." },
+  { parent: "Personal",            name: "Donations & Charity",    kind: "expense", color: "#C87EB8", icon: "heart-handshake", description: "Charitable donations, nonprofit support, and giving." },
+  { parent: "Personal",            name: "Personal Insurance",     kind: "expense", color: "#D9A3C7", icon: "shield",          description: "Personal insurance payments such as car, health, or other private coverage." },
   // Money Movement
   { parent: "Money Movement",      name: "Internal Transfer",      kind: "expense", color: "#A2AAC2", icon: "arrow-left-right", description: "Transfers between accounts within the same entity. Not P&L." },
   { parent: "Money Movement",      name: "Loan Repayment",         kind: "expense", color: "#C29B6F", icon: "landmark",       description: "Principal and interest repayment on loans or credit lines." },

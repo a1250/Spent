@@ -27,6 +27,7 @@ import type {
   ImportHealthItem,
   MonthlyPnLPreview,
   PnLReportMode,
+  MonthlyCashFlowPreview,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -882,4 +883,29 @@ export function getMonthlyPnLPreview(params?: {
   }
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
   return fetchJSON<MonthlyPnLPreview>(`/api/reports/pl${query}`);
+}
+
+export function getMonthlyCashFlowPreview(params?: {
+  fromMonth?: string;
+  toMonth?: string;
+  businessUnit?: string;
+  mode?: PnLReportMode;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.fromMonth) {
+    searchParams.set("fromMonth", params.fromMonth);
+  }
+  if (params?.toMonth) {
+    searchParams.set("toMonth", params.toMonth);
+  }
+  if (params?.businessUnit && params.businessUnit !== "all") {
+    searchParams.set("businessUnit", params.businessUnit);
+  }
+  if (params?.mode) {
+    searchParams.set("mode", params.mode);
+  }
+  const query = searchParams.size > 0 ? `?${searchParams}` : "";
+  return fetchJSON<MonthlyCashFlowPreview>(
+    `/api/reports/cashflow${query}`
+  );
 }

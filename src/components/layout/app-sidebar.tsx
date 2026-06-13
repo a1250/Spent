@@ -10,6 +10,7 @@ import {
   Upload,
   ListChecks,
   FileChartColumn,
+  ChartNoAxesCombined,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -69,7 +70,13 @@ const NAV: NavDef[] = [
     href: "/reports/pl",
     labelKey: "reports",
     Icon: FileChartColumn,
-    match: (p: string) => p.startsWith("/reports"),
+    match: (p: string) => p.startsWith("/reports/pl"),
+  },
+  {
+    href: "/reports/cashflow",
+    labelKey: "cashFlow",
+    Icon: ChartNoAxesCombined,
+    match: (p: string) => p.startsWith("/reports/cashflow"),
   },
 ];
 

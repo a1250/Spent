@@ -372,6 +372,78 @@ export interface MonthlyPnLPreview {
   };
 }
 
+// ── Monthly cash flow preview ────────────────────────────────────────────────
+
+export type CashFlowSection =
+  | "operating"
+  | "investing"
+  | "financing"
+  | "internal";
+
+export interface MonthlyCashFlowDetail {
+  section: CashFlowSection;
+  financialNature: string;
+  categoryName: string;
+  businessUnit: string;
+  amount: number;
+  transactionCount: number;
+}
+
+export interface CashFlowTotals {
+  operatingIn: number;
+  operatingOut: number;
+  netOperating: number;
+  investingIn: number;
+  investingOut: number;
+  netInvesting: number;
+  financingIn: number;
+  financingOut: number;
+  netFinancing: number;
+  internalIn: number;
+  internalOut: number;
+  internalNet: number;
+  internalMovementTotal: number;
+  netCashFlow: number;
+}
+
+export interface CashFlowScopeSummary {
+  netCashFlow: number;
+  internalMovementTotal: number;
+  transactionCount: number;
+}
+
+export interface CashFlowScopeSummaries {
+  business: CashFlowScopeSummary;
+  personal: CashFlowScopeSummary;
+  all: CashFlowScopeSummary;
+  unknown: CashFlowScopeSummary;
+  shared: CashFlowScopeSummary;
+}
+
+export interface MonthlyCashFlowRow extends CashFlowTotals {
+  month: string;
+  classifiedValueCoverage: number;
+  needsReviewCount: number;
+  details: MonthlyCashFlowDetail[];
+}
+
+export interface MonthlyCashFlowPreview {
+  coverage: DataQualitySummary;
+  totals: CashFlowTotals;
+  scopeSummaries: CashFlowScopeSummaries;
+  months: MonthlyCashFlowRow[];
+  availableRange: {
+    fromMonth: string | null;
+    toMonth: string | null;
+  };
+  filters: {
+    fromMonth: string | null;
+    toMonth: string | null;
+    businessUnit: string | null;
+    mode: PnLReportMode;
+  };
+}
+
 // ── Classification rules ──────────────────────────────────────────────────────
 
 export type RuleMatchField =

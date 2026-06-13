@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowDownLeft,
   ArrowUpRight,
   ChevronDown,
-  FileWarning,
-  Landmark,
+  CircleDollarSign,
   RefreshCcw,
+  Repeat2,
   SlidersHorizontal,
   Users,
 } from "lucide-react";
@@ -25,13 +26,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getMonthlyPnLPreview, listBusinessUnits } from "@/lib/api";
+import { getMonthlyCashFlowPreview, listBusinessUnits } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
-  MonthlyPnLDetail,
-  MonthlyPnLPreview,
-  MonthlyPnLRow,
-  PnLDetailSection,
+  CashFlowSection,
+  MonthlyCashFlowDetail,
+  MonthlyCashFlowPreview,
+  MonthlyCashFlowRow,
   PnLReportMode,
 } from "@/lib/types";
 
@@ -42,21 +43,20 @@ const currency = new Intl.NumberFormat("he-IL", {
   maximumFractionDigits: 0,
 });
 
-const SECTION_LABELS: Record<PnLDetailSection, string> = {
-  operating_revenue: "Operating Revenue",
-  refunds: "Adjustments / Refunds",
-  operating_expenses: "Operating Expenses",
-  taxes: "Taxes included in P&L",
-  uncertain: "Uncertain P&L",
-};
-
 const MODE_LABELS: Record<PnLReportMode, string> = {
   business: "Business Only",
   personal: "Personal Only",
   all: "All Units",
 };
 
-export function MonthlyPnLPreviewPage() {
+const SECTION_LABELS: Record<CashFlowSection, string> = {
+  operating: "Operating Cash Flow",
+  investing: "Investing Cash Flow",
+  financing: "Financing Cash Flow",
+  internal: "Internal / Working Capital",
+};
+
+export function MonthlyCashFlowPreviewPage() {
   const [mode, setMode] = useState<PnLReportMode>("business");
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
@@ -73,8 +73,8 @@ export function MonthlyPnLPreviewPage() {
     [businessUnit, fromMonth, mode, toMonth]
   );
   const reportQuery = useQuery({
-    queryKey: ["monthly-pnl-preview", queryParams],
-    queryFn: () => getMonthlyPnLPreview(queryParams),
+    queryKey: ["monthly-cash-flow-preview", queryParams],
+    queryFn: () => getMonthlyCashFlowPreview(queryParams),
   });
   const businessUnitsQuery = useQuery({
     queryKey: ["business-units"],
@@ -95,6 +95,7 @@ export function MonthlyPnLPreviewPage() {
     }
     return units.filter((unit) => unit.slug === "personal");
   }, [businessUnitsQuery.data, mode]);
+
   const changeMode = (nextMode: string | number) => {
     if (
       nextMode === "business" ||
@@ -123,19 +124,19 @@ export function MonthlyPnLPreviewPage() {
   return (
     <>
       <PageHeader
-        title="Monthly P&L Preview"
-        meta="Classified transactions only"
+        title="Cash Flow Preview"
+        meta="Classified cash movements only"
         actions={
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               nativeButton={false}
-              render={<Link href="/reports/cashflow">Cash Flow Preview</Link>}
+              render={<Link href="/reports/pl">P&L Preview</Link>}
             />
             <Badge
               variant="outline"
-              className="border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+              className="border-sky-500/40 bg-sky-500/5 text-sky-700 dark:text-sky-300"
             >
               Preview
             </Badge>
@@ -152,7 +153,8 @@ export function MonthlyPnLPreviewPage() {
                 <h2 className="font-serif text-xl">Report view</h2>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Keep business performance separate from personal activity.
+                Follow real cash movement without mixing personal activity
+                into business performance.
               </p>
             </div>
             <Tabs value={mode} onValueChange={changeMode}>
@@ -166,7 +168,7 @@ export function MonthlyPnLPreviewPage() {
           {report && <ScopeSummaryCards report={report} mode={mode} />}
         </section>
 
-        {report && <PreviewWarning report={report} mode={mode} />}
+        {report && <CoverageWarning report={report} mode={mode} />}
 
         <section className="rounded-2xl border bg-card p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
@@ -270,24 +272,24 @@ export function MonthlyPnLPreviewPage() {
         </section>
 
         {reportQuery.isLoading && (
-          <ReportState>Calculating the classified preview…</ReportState>
+          <ReportState>Tracing classified cash movements…</ReportState>
         )}
         {reportQuery.isError && (
           <ReportState error>
-            The P&L preview could not be loaded.
+            The cash flow preview could not be loaded.
           </ReportState>
         )}
 
         {report && (
           <>
-            <SummaryCards report={report} />
+            <FlowSummaryCards report={report} />
             <MonthlyTable
               months={report.months}
               mode={report.filters.mode}
               openMonths={openMonths}
               onToggle={toggleMonth}
             />
-            <ExcludedSummary report={report} />
+            <InternalMovementSummary report={report} />
           </>
         )}
       </main>
@@ -299,23 +301,23 @@ function ScopeSummaryCards({
   report,
   mode,
 }: {
-  report: MonthlyPnLPreview;
+  report: MonthlyCashFlowPreview;
   mode: PnLReportMode;
 }) {
   const cards = [
     {
       mode: "business" as const,
-      label: "Business Net P&L Preview",
+      label: "Business Cash Flow Preview",
       summary: report.scopeSummaries.business,
     },
     {
       mode: "personal" as const,
-      label: "Personal Net P&L Preview",
+      label: "Personal Cash Flow Preview",
       summary: report.scopeSummaries.personal,
     },
     {
       mode: "all" as const,
-      label: "All Units Net P&L Preview",
+      label: "All Units Cash Flow Preview",
       summary: report.scopeSummaries.all,
     },
   ];
@@ -342,15 +344,17 @@ function ScopeSummaryCards({
           <div
             className={cn(
               "mt-3 font-serif text-3xl tabular-nums",
-              card.summary.netPnL >= 0
+              card.summary.netCashFlow >= 0
                 ? "text-emerald-700 dark:text-emerald-300"
                 : "text-red-700 dark:text-red-300"
             )}
           >
-            {currency.format(card.summary.netPnL)}
+            {currency.format(card.summary.netCashFlow)}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {card.summary.transactionCount} classified P&L rows
+            Excludes{" "}
+            {currency.format(card.summary.internalMovementTotal)} of internal
+            movement
           </p>
         </div>
       ))}
@@ -358,11 +362,11 @@ function ScopeSummaryCards({
   );
 }
 
-function PreviewWarning({
+function CoverageWarning({
   report,
   mode,
 }: {
-  report: MonthlyPnLPreview;
+  report: MonthlyCashFlowPreview;
   mode: PnLReportMode;
 }) {
   const summary = report.coverage;
@@ -376,43 +380,38 @@ function PreviewWarning({
     ["Coverage by count", `${summary.coverageByCount.toFixed(2)}%`],
     ["Coverage by value", `${summary.coverageByValue.toFixed(2)}%`],
     ["Unclassified value", currency.format(summary.unclassifiedValueTotal)],
-    ["Unclassified income", currency.format(summary.unclassifiedIncomeValue)],
-    ["Unclassified expense", currency.format(summary.unclassifiedExpenseValue)],
   ] as const;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-amber-500/50 bg-amber-500/[0.06]">
-      <div className="flex flex-col gap-4 border-b border-amber-500/20 p-5 lg:flex-row lg:items-start">
+    <section className="overflow-hidden rounded-2xl border border-sky-500/45 bg-sky-500/[0.055]">
+      <div className="flex flex-col gap-4 border-b border-sky-500/20 p-5 lg:flex-row lg:items-start">
         <div className="flex min-w-0 gap-3">
-          <div className="rounded-xl bg-amber-500/15 p-2.5">
-            <AlertTriangle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+          <div className="rounded-xl bg-sky-500/15 p-2.5">
+            <AlertTriangle className="h-5 w-5 text-sky-700 dark:text-sky-300" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800/70 dark:text-amber-200/70">
-              Low-confidence financial preview
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-800/70 dark:text-sky-200/70">
+              Classified cash flow preview
             </p>
-            <h2 className="mt-1 max-w-4xl font-serif text-xl leading-snug text-amber-950 dark:text-amber-100">
-              Preview only: this report is based on classified transactions.
-              There are still{" "}
-              {summary.needsReviewTransactions.toLocaleString("en-US")}{" "}
-              transactions needing review.
+            <h2 className="mt-1 max-w-4xl font-serif text-xl leading-snug text-sky-950 dark:text-sky-100">
+              Preview only: {summary.needsReviewTransactions.toLocaleString(
+                "en-US"
+              )}{" "}
+              transactions still need review and are excluded.
             </h2>
-            <p className="mt-2 text-sm text-amber-900/75 dark:text-amber-100/70">
-              Headline P&L excludes every needs-review, uncertain, transfer,
-              investment, financing, and working-capital row.
-            </p>
-            <p className="mt-1 text-xs text-amber-900/65 dark:text-amber-100/60">
-              Coverage stays all-units for the selected month range so
-              unassigned review work remains visible.
+            <p className="mt-2 text-sm text-sky-900/75 dark:text-sky-100/70">
+              Net Cash Flow includes operating, investing, and financing cash.
+              Internal transfers are displayed separately and never inflate
+              the headline.
             </p>
             {mode === "all" && (
-              <p className="mt-3 rounded-lg border border-amber-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-amber-950 dark:text-amber-100">
-                This view mixes business and personal activity. Use Business
-                Only for business performance.
+              <p className="mt-3 rounded-lg border border-sky-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-sky-950 dark:text-sky-100">
+                This view mixes business and personal cash activity. Use
+                Business Only for business cash performance.
               </p>
             )}
             {mode === "business" && hasUnassignedRows && (
-              <p className="mt-3 rounded-lg border border-amber-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-amber-950 dark:text-amber-100">
+              <p className="mt-3 rounded-lg border border-sky-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-sky-950 dark:text-sky-100">
                 Some classified rows are unknown/shared and are excluded from
                 this business view.
               </p>
@@ -423,7 +422,7 @@ function PreviewWarning({
           variant="outline"
           size="sm"
           nativeButton={false}
-          className="border-amber-600/30 bg-background/70 lg:ms-auto"
+          className="border-sky-600/30 bg-background/70 lg:ms-auto"
           render={
             <Link href="/review">
               Continue classification
@@ -432,7 +431,7 @@ function PreviewWarning({
           }
         />
       </div>
-      <div className="grid grid-cols-2 divide-x divide-y divide-amber-500/15 sm:grid-cols-4 lg:grid-cols-8 lg:divide-y-0">
+      <div className="grid grid-cols-2 divide-x divide-y divide-sky-500/15 sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
         {metrics.map(([label, value]) => (
           <div key={label} className="px-4 py-3">
             <div className="font-mono text-base font-semibold tabular-nums">
@@ -450,46 +449,37 @@ function PreviewWarning({
   );
 }
 
-function SummaryCards({ report }: { report: MonthlyPnLPreview }) {
+function FlowSummaryCards({
+  report,
+}: {
+  report: MonthlyCashFlowPreview;
+}) {
   const items = [
     {
-      label: "Operating Revenue",
-      value: report.totals.operatingRevenue,
-      tone: "text-emerald-700 dark:text-emerald-300",
+      label: "Operating Cash Flow",
+      value: report.totals.netOperating,
+      note: `${currency.format(report.totals.operatingIn)} in · ${currency.format(report.totals.operatingOut)} out`,
     },
     {
-      label: "Adjustments / Refunds",
-      value: report.totals.refunds,
-      tone: "text-sky-700 dark:text-sky-300",
+      label: "Investing Cash Flow",
+      value: report.totals.netInvesting,
+      note: `${currency.format(report.totals.investingIn)} in · ${currency.format(report.totals.investingOut)} out`,
     },
     {
-      label: "Operating Expenses",
-      value: report.totals.operatingExpenses,
-      tone: "",
+      label: "Financing Cash Flow",
+      value: report.totals.netFinancing,
+      note: `${currency.format(report.totals.financingIn)} in · ${currency.format(report.totals.financingOut)} out`,
     },
     {
-      label: "Taxes in P&L",
-      value: report.totals.taxes,
-      tone: "",
-    },
-    {
-      label: `${MODE_LABELS[report.filters.mode]} Net P&L`,
-      value: report.totals.netPnL,
-      tone:
-        report.totals.netPnL >= 0
-          ? "text-emerald-700 dark:text-emerald-300"
-          : "text-red-700 dark:text-red-300",
+      label: "Net Cash Flow",
+      value: report.totals.netCashFlow,
+      note: "Excludes internal movement",
       featured: true,
-    },
-    {
-      label: "Uncertain P&L",
-      value: report.totals.uncertainPnL,
-      tone: "text-amber-700 dark:text-amber-300",
     },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <div
           key={item.label}
@@ -503,12 +493,15 @@ function SummaryCards({ report }: { report: MonthlyPnLPreview }) {
           </div>
           <div
             className={cn(
-              "mt-3 font-serif text-2xl tabular-nums",
-              item.tone
+              "mt-3 font-serif text-3xl tabular-nums",
+              item.value >= 0
+                ? "text-emerald-700 dark:text-emerald-300"
+                : "text-red-700 dark:text-red-300"
             )}
           >
             {currency.format(item.value)}
           </div>
+          <p className="mt-1 text-xs text-muted-foreground">{item.note}</p>
         </div>
       ))}
     </section>
@@ -521,65 +514,56 @@ function MonthlyTable({
   openMonths,
   onToggle,
 }: {
-  months: MonthlyPnLRow[];
+  months: MonthlyCashFlowRow[];
   mode: PnLReportMode;
   openMonths: Set<string>;
   onToggle: (month: string) => void;
 }) {
   if (months.length === 0) {
-    return <ReportState>No transactions match these filters.</ReportState>;
+    return <ReportState>No cash movements match these filters.</ReportState>;
   }
 
   return (
     <section className="space-y-3">
       <div>
         <h2 className="font-serif text-xl">
-          {MODE_LABELS[mode]} monthly preview
+          {MODE_LABELS[mode]} monthly cash flow
         </h2>
         <p className="text-sm text-muted-foreground">
-          Expand a month to inspect server-aggregated category groups.
+          Internal movement is visible but excluded from Net Cash Flow.
         </p>
       </div>
       <div className="overflow-x-auto rounded-2xl border bg-card">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1700px] text-sm">
           <thead>
             <tr className="border-b bg-muted/35 text-xs text-muted-foreground">
-              <th className="w-10 px-3 py-3" />
               <th className="px-3 py-3 text-start font-medium">Month</th>
-              <th className="px-3 py-3 text-end font-medium">Revenue</th>
+              <th className="px-3 py-3 text-end font-medium">Operating In</th>
+              <th className="px-3 py-3 text-end font-medium">Operating Out</th>
+              <th className="px-3 py-3 text-end font-medium">Net Operating</th>
+              <th className="px-3 py-3 text-end font-medium">Investing In</th>
+              <th className="px-3 py-3 text-end font-medium">Investing Out</th>
+              <th className="px-3 py-3 text-end font-medium">Net Investing</th>
+              <th className="px-3 py-3 text-end font-medium">Financing In</th>
+              <th className="px-3 py-3 text-end font-medium">Financing Out</th>
+              <th className="px-3 py-3 text-end font-medium">Net Financing</th>
+              <th className="px-3 py-3 text-end font-medium">Internal In</th>
+              <th className="px-3 py-3 text-end font-medium">Internal Out</th>
               <th className="px-3 py-3 text-end font-medium">
-                Refunds / Adjustments
+                Internal Movement
               </th>
-              <th className="px-3 py-3 text-end font-medium">
-                Operating Expenses
-              </th>
-              <th className="px-3 py-3 text-end font-medium">Taxes</th>
-              <th className="px-3 py-3 text-end font-medium">
-                Net P&L Preview
-              </th>
-              <th className="px-3 py-3 text-end font-medium">
-                Uncertain P&L
-              </th>
-              <th className="px-3 py-3 text-center font-medium">
-                Value coverage
-              </th>
-              <th className="px-3 py-3 text-center font-medium">
-                Needs review
-              </th>
+              <th className="px-3 py-3 text-end font-medium">Net Cash Flow</th>
             </tr>
           </thead>
           <tbody>
-            {months.map((month) => {
-              const isOpen = openMonths.has(month.month);
-              return (
-                <MonthRows
-                  key={month.month}
-                  month={month}
-                  isOpen={isOpen}
-                  onToggle={() => onToggle(month.month)}
-                />
-              );
-            })}
+            {months.map((month) => (
+              <MonthRows
+                key={month.month}
+                month={month}
+                isOpen={openMonths.has(month.month)}
+                onToggle={() => onToggle(month.month)}
+              />
+            ))}
           </tbody>
         </table>
       </div>
@@ -592,18 +576,18 @@ function MonthRows({
   isOpen,
   onToggle,
 }: {
-  month: MonthlyPnLRow;
+  month: MonthlyCashFlowRow;
   isOpen: boolean;
   onToggle: () => void;
 }) {
   return (
     <>
       <tr className="border-b hover:bg-muted/20">
-        <td colSpan={2} className="p-0">
+        <td className="p-0">
           <button
             type="button"
             aria-expanded={isOpen}
-            className="flex w-full items-center gap-3 px-3 py-3 text-start font-medium"
+            className="flex w-full min-w-44 items-center gap-3 px-3 py-3 text-start font-medium"
             onClick={onToggle}
           >
             <ChevronDown
@@ -615,31 +599,23 @@ function MonthRows({
             {formatMonth(month.month)}
           </button>
         </td>
-        <MoneyCell value={month.operatingRevenue} positive />
-        <MoneyCell value={month.refunds} />
-        <MoneyCell value={month.operatingExpenses} />
-        <MoneyCell value={month.taxes} />
-        <MoneyCell value={month.netPnL} net />
-        <MoneyCell value={month.uncertainPnL} uncertain />
-        <td className="px-3 py-3 text-center">
-          <Badge
-            variant="outline"
-            className={
-              month.classifiedValueCoverage >= 70
-                ? "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-                : "border-amber-500/30 text-amber-700 dark:text-amber-300"
-            }
-          >
-            {month.classifiedValueCoverage.toFixed(1)}%
-          </Badge>
-        </td>
-        <td className="px-3 py-3 text-center font-mono tabular-nums">
-          {month.needsReviewCount.toLocaleString("en-US")}
-        </td>
+        <MoneyCell value={month.operatingIn} inflow />
+        <MoneyCell value={month.operatingOut} />
+        <MoneyCell value={month.netOperating} net />
+        <MoneyCell value={month.investingIn} inflow />
+        <MoneyCell value={month.investingOut} />
+        <MoneyCell value={month.netInvesting} net />
+        <MoneyCell value={month.financingIn} inflow />
+        <MoneyCell value={month.financingOut} />
+        <MoneyCell value={month.netFinancing} net />
+        <MoneyCell value={month.internalIn} internal />
+        <MoneyCell value={month.internalOut} internal />
+        <MoneyCell value={month.internalMovementTotal} internal />
+        <MoneyCell value={month.netCashFlow} net featured />
       </tr>
       {isOpen && (
         <tr className="border-b bg-muted/[0.12]">
-          <td colSpan={10} className="p-0">
+          <td colSpan={14} className="p-0">
             <MonthDetails month={month} />
           </td>
         </tr>
@@ -648,53 +624,25 @@ function MonthRows({
   );
 }
 
-function MonthDetails({ month }: { month: MonthlyPnLRow }) {
-  const sections = Object.keys(SECTION_LABELS) as PnLDetailSection[];
+function MonthDetails({ month }: { month: MonthlyCashFlowRow }) {
+  const sections: CashFlowSection[] = [
+    "operating",
+    "investing",
+    "financing",
+    "internal",
+  ];
 
   return (
-    <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="space-y-5">
-        {sections.map((section) => {
-          const details = month.details.filter(
-            (detail) => detail.section === section
-          );
-          if (details.length === 0) return null;
-          return (
-            <DetailSection key={section} section={section} details={details} />
-          );
-        })}
-        {month.details.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No classified P&L details in this month.
-          </p>
-        )}
-      </div>
-      <div>
-        <div className="rounded-xl border bg-background/70 p-4">
-          <div className="flex items-center gap-2">
-            <FileWarning className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Excluded / Not P&L</h3>
-          </div>
-          <div className="mt-4 space-y-3">
-            <ExcludedLine
-              label="Internal transfers"
-              value={month.excluded.internalTransfers}
-            />
-            <ExcludedLine
-              label="Investments"
-              value={month.excluded.investments}
-            />
-            <ExcludedLine
-              label="Working capital"
-              value={month.excluded.workingCapital}
-            />
-            <ExcludedLine
-              label="Owner deposits / draws"
-              value={month.excluded.ownerMovements}
-            />
-          </div>
-        </div>
-      </div>
+    <div className="space-y-5 p-5">
+      {sections.map((section) => {
+        const details = month.details.filter(
+          (detail) => detail.section === section
+        );
+        if (details.length === 0) return null;
+        return (
+          <DetailSection key={section} section={section} details={details} />
+        );
+      })}
     </div>
   );
 }
@@ -703,16 +651,16 @@ function DetailSection({
   section,
   details,
 }: {
-  section: PnLDetailSection;
-  details: MonthlyPnLDetail[];
+  section: CashFlowSection;
+  details: MonthlyCashFlowDetail[];
 }) {
   return (
     <div>
       <h3
         className={cn(
           "mb-2 text-xs font-semibold uppercase tracking-[0.08em]",
-          section === "uncertain"
-            ? "text-amber-700 dark:text-amber-300"
+          section === "internal"
+            ? "text-sky-700 dark:text-sky-300"
             : "text-muted-foreground"
         )}
       >
@@ -722,24 +670,32 @@ function DetailSection({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-start font-medium">Group</th>
+              <th className="px-3 py-2 text-start font-medium">Section</th>
+              <th className="px-3 py-2 text-start font-medium">
+                Financial nature
+              </th>
               <th className="px-3 py-2 text-start font-medium">Category</th>
-              <th className="px-3 py-2 text-center font-medium">Count</th>
+              <th className="px-3 py-2 text-start font-medium">
+                Business unit
+              </th>
+              <th className="px-3 py-2 text-center font-medium">Tx count</th>
               <th className="px-3 py-2 text-end font-medium">Amount</th>
             </tr>
           </thead>
           <tbody>
             {details.map((detail) => (
               <tr
-                key={`${section}-${detail.groupName}-${detail.categoryName}`}
+                key={`${section}-${detail.financialNature}-${detail.categoryName}-${detail.businessUnit}`}
                 className="border-b last:border-0"
               >
                 <td className="px-3 py-2 text-muted-foreground">
-                  {detail.groupName}
+                  {SECTION_LABELS[section]}
                 </td>
                 <td className="px-3 py-2 font-medium">
-                  {detail.categoryName}
+                  {formatNature(detail.financialNature)}
                 </td>
+                <td className="px-3 py-2">{detail.categoryName}</td>
+                <td className="px-3 py-2">{detail.businessUnit}</td>
                 <td className="px-3 py-2 text-center font-mono tabular-nums">
                   {detail.transactionCount}
                 </td>
@@ -755,78 +711,100 @@ function DetailSection({
   );
 }
 
-function ExcludedSummary({ report }: { report: MonthlyPnLPreview }) {
-  const items = [
-    ["Internal transfers", report.excluded.internalTransfers],
-    ["Investments", report.excluded.investments],
-    ["Working capital", report.excluded.workingCapital],
-    ["Owner deposits / draws", report.excluded.ownerMovements],
-  ] as const;
-
+function InternalMovementSummary({
+  report,
+}: {
+  report: MonthlyCashFlowPreview;
+}) {
   return (
-    <section className="rounded-2xl border bg-card p-5">
-      <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-muted p-2.5">
-          <Landmark className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <div>
-          <h2 className="font-serif text-xl">Excluded / Not P&L summary</h2>
-          <p className="text-sm text-muted-foreground">
-            Classified balance-sheet movements shown for transparency. None are
-            included in headline Net P&L.
-          </p>
-        </div>
-      </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map(([label, value]) => (
-          <div key={label} className="rounded-xl border bg-muted/15 p-4">
-            <div className="font-mono text-xl font-semibold tabular-nums">
-              {currency.format(value)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{label}</div>
+    <section className="rounded-2xl border border-sky-500/25 bg-card p-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-sky-500/10 p-2.5">
+            <Repeat2 className="h-5 w-5 text-sky-700 dark:text-sky-300" />
           </div>
-        ))}
+          <div>
+            <h2 className="font-serif text-xl">
+              Internal / Working Capital
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Transfers and credit-card settlement movement. Displayed for
+              traceability, excluded from headline Net Cash Flow.
+            </p>
+          </div>
+        </div>
+        <div className="grid flex-1 gap-3 sm:grid-cols-3 lg:ms-auto lg:max-w-2xl">
+          <InternalMetric
+            label="Internal In"
+            value={report.totals.internalIn}
+            icon={ArrowDownLeft}
+          />
+          <InternalMetric
+            label="Internal Out"
+            value={report.totals.internalOut}
+            icon={ArrowUpRight}
+          />
+          <InternalMetric
+            label="Movement total"
+            value={report.totals.internalMovementTotal}
+            icon={CircleDollarSign}
+          />
+        </div>
       </div>
     </section>
   );
 }
 
+function InternalMetric({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: number;
+  icon: typeof ArrowUpRight;
+}) {
+  return (
+    <div className="rounded-xl border bg-muted/15 p-4">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+        {currency.format(value)}
+      </div>
+    </div>
+  );
+}
+
 function MoneyCell({
   value,
-  positive = false,
+  inflow = false,
   net = false,
-  uncertain = false,
+  internal = false,
+  featured = false,
 }: {
   value: number;
-  positive?: boolean;
+  inflow?: boolean;
   net?: boolean;
-  uncertain?: boolean;
+  internal?: boolean;
+  featured?: boolean;
 }) {
   return (
     <td
       className={cn(
         "px-3 py-3 text-end font-mono tabular-nums",
-        positive && value > 0 && "text-emerald-700 dark:text-emerald-300",
+        inflow && value > 0 && "text-emerald-700 dark:text-emerald-300",
         net &&
           (value >= 0
             ? "font-semibold text-emerald-700 dark:text-emerald-300"
             : "font-semibold text-red-700 dark:text-red-300"),
-        uncertain && value !== 0 && "text-amber-700 dark:text-amber-300"
+        internal && value !== 0 && "text-sky-700 dark:text-sky-300",
+        featured && "bg-foreground/[0.025]"
       )}
     >
       {currency.format(value)}
     </td>
-  );
-}
-
-function ExcludedLine({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="font-mono text-sm font-medium tabular-nums">
-        {currency.format(value)}
-      </span>
-    </div>
   );
 }
 
@@ -855,4 +833,11 @@ function formatMonth(month: string): string {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
+function formatNature(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

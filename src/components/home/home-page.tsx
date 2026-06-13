@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { getActivity, getHome } from "@/lib/api";
+import {
+  getActivity,
+  getDataQualitySummary,
+  getHome,
+  getNeedsReviewTransactions,
+} from "@/lib/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { SyncButton } from "@/components/dashboard/sync-button";
 import { CategorizeButton } from "@/components/dashboard/categorize-button";
@@ -19,6 +24,8 @@ import { NeedsAttentionCard } from "./needs-attention-card";
 import { BankHealthCard } from "./bank-health-card";
 import { SyncStatusPill } from "./sync-status-pill";
 import { SyncFailureBanner } from "./sync-failure-banner";
+import { NeedsReviewWidget } from "./needs-review-widget";
+import { CoverageBanner } from "@/components/review/coverage-banner";
 import { CardError, CardSkeleton } from "./card-shell";
 import type { HomePayload, HomeSection } from "@/lib/types";
 
@@ -57,6 +64,14 @@ export function HomePage() {
     queryKey: ["home"],
     queryFn: getHome,
   });
+  const { data: qualitySummary } = useQuery({
+    queryKey: ["review-summary"],
+    queryFn: getDataQualitySummary,
+  });
+  const { data: reviewPreview = [] } = useQuery({
+    queryKey: ["review-transactions", { limit: 3 }],
+    queryFn: () => getNeedsReviewTransactions({ limit: 3 }),
+  });
 
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const { data: activity } = useQuery({
@@ -85,6 +100,8 @@ export function HomePage() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["settings"] });
     queryClient.invalidateQueries({ queryKey: ["activity"] });
+    queryClient.invalidateQueries({ queryKey: ["review-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["review-transactions"] });
   }, [queryClient]);
 
   return (
@@ -114,6 +131,15 @@ export function HomePage() {
           className="mb-4 md:mb-5 lg:mb-6"
         />
         <AINotConnectedBanner className="mb-4 md:mb-5 lg:mb-6" />
+        {qualitySummary && (
+          <div className="mb-4 grid gap-4 md:mb-5 lg:mb-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <CoverageBanner summary={qualitySummary} />
+            <NeedsReviewWidget
+              rows={reviewPreview}
+              total={qualitySummary.needsReviewTransactions}
+            />
+          </div>
+        )}
         <div className="grid grid-cols-12 gap-4 md:gap-5 lg:gap-6">
           {renderSection("thisMonth", data, isLoading, isError, ROW_1, skeletonLabels)}
           {renderSection("cashFlow", data, isLoading, isError, ROW_1_SIDE, skeletonLabels)}

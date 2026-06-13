@@ -593,7 +593,7 @@ interface TransactionRow {
   account_label?: string | null;
 }
 
-function mapTransactionRow(row: unknown): TransactionWithCategory {
+export function mapTransactionRow(row: unknown): TransactionWithCategory {
   const r = row as TransactionRow;
   return {
     id: r.id,

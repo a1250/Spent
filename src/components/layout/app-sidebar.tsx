@@ -8,6 +8,7 @@ import {
   Wallet,
   ArrowLeftRight,
   Upload,
+  ListChecks,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -56,6 +57,12 @@ const NAV: NavDef[] = [
     labelKey: "import",
     Icon: Upload,
     match: (p: string) => p.startsWith("/import"),
+  },
+  {
+    href: "/review",
+    labelKey: "review",
+    Icon: ListChecks,
+    match: (p: string) => p.startsWith("/review"),
   },
 ];
 

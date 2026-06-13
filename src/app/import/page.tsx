@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -55,6 +56,7 @@ import type {
   LearningApplyScope,
   LearningRuleMatchType,
 } from "@/lib/types";
+import { ImportHealthReport } from "@/components/import/import-health-report";
 
 // ── Financial nature labels ───────────────────────────────────────────────────
 
@@ -1324,23 +1326,70 @@ function ReviewView({
 // ── Page root ─────────────────────────────────────────────────────────────────
 
 export default function ImportPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [uploadResult, setUploadResult] = useState<ImportUploadResult | null>(null);
+  const requestedBatchId = Number(searchParams.get("batchId"));
+  const hasRequestedBatch =
+    Number.isInteger(requestedBatchId) && requestedBatchId > 0;
+  const requestedBatchQuery = useQuery({
+    queryKey: ["import-batch", requestedBatchId],
+    queryFn: () => getImportBatch(requestedBatchId),
+    enabled: hasRequestedBatch && uploadResult == null,
+  });
 
-  const handleBack = () => setUploadResult(null);
+  const requestedResult = useMemo<ImportUploadResult | null>(() => {
+    const data = requestedBatchQuery.data;
+    if (!data) return null;
+    return {
+      batch: data.batch,
+      summary: {
+        totalRows: data.rows.length,
+        autoClassified: data.rows.filter(
+          (row) => row.classificationStatus === "auto_classified"
+        ).length,
+        needsReview: data.rows.filter(
+          (row) => row.classificationStatus === "needs_review"
+        ).length,
+        duplicates: data.rows.filter((row) => row.isDuplicate).length,
+        skipped: data.rows.filter(
+          (row) => row.importStatus === "skipped_duplicate"
+        ).length,
+        pending: data.rows.filter(
+          (row) => row.transactionStatus === "pending"
+        ).length,
+      },
+    };
+  }, [requestedBatchQuery.data]);
 
-  if (uploadResult) {
+  const activeResult = uploadResult ?? requestedResult;
+
+  const handleSelect = (result: ImportUploadResult) => {
+    setUploadResult(result);
+    router.replace(`/import?batchId=${result.batch.id}`, { scroll: false });
+  };
+
+  const handleBack = () => {
+    setUploadResult(null);
+    router.replace("/import", { scroll: false });
+  };
+
+  if (activeResult) {
     return (
       <ReviewView
-        initialBatch={uploadResult.batch}
-        initialSummary={uploadResult.summary}
+        initialBatch={activeResult.batch}
+        initialSummary={activeResult.summary}
         onBack={handleBack}
       />
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl" dir="rtl">
-      <UploadZone onUploaded={setUploadResult} />
+    <div className="space-y-10" dir="rtl">
+      <div className="mx-auto max-w-2xl">
+        <UploadZone onUploaded={handleSelect} />
+      </div>
+      <ImportHealthReport />
     </div>
   );
 }

@@ -21,6 +21,10 @@ import type {
   BusinessUnitRecord,
   LearningApplyScope,
   LearningRuleMatchType,
+  DataQualitySummary,
+  NeedsReviewTransaction,
+  ImportRowActionItem,
+  ImportHealthItem,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -801,4 +805,56 @@ export function patchImportRow(
       body: JSON.stringify(patch),
     }
   );
+}
+
+// ── Data quality API ─────────────────────────────────────────────────────────
+
+export function getDataQualitySummary() {
+  return fetchJSON<DataQualitySummary>("/api/review/summary");
+}
+
+export function getNeedsReviewTransactions(params?: {
+  limit?: number;
+  importBatchId?: number;
+  search?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.limit != null) {
+    searchParams.set("limit", String(params.limit));
+  }
+  if (params?.importBatchId != null) {
+    searchParams.set("importBatchId", String(params.importBatchId));
+  }
+  if (params?.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+  const query = searchParams.size > 0 ? `?${searchParams}` : "";
+  return fetchJSON<NeedsReviewTransaction[]>(
+    `/api/review/transactions${query}`
+  );
+}
+
+export function getImportRowsNeedingAction(params?: {
+  limit?: number;
+  batchId?: number;
+  status?: "pending" | "pending_duplicate" | "skipped_duplicate";
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.limit != null) {
+    searchParams.set("limit", String(params.limit));
+  }
+  if (params?.batchId != null) {
+    searchParams.set("batchId", String(params.batchId));
+  }
+  if (params?.status) {
+    searchParams.set("status", params.status);
+  }
+  const query = searchParams.size > 0 ? `?${searchParams}` : "";
+  return fetchJSON<ImportRowActionItem[]>(
+    `/api/review/import-rows${query}`
+  );
+}
+
+export function getImportHealth() {
+  return fetchJSON<ImportHealthItem[]>("/api/import/health");
 }

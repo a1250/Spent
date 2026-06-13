@@ -229,6 +229,68 @@ export interface ImportRow {
   updatedAt: string;
 }
 
+// ── Data quality and review ──────────────────────────────────────────────────
+
+export interface DataQualitySummary {
+  totalTransactions: number;
+  classifiedTransactions: number;
+  needsReviewTransactions: number;
+  coverageByCount: number;
+  coverageByValue: number;
+  totalAbsoluteValue: number;
+  classifiedAbsoluteValue: number;
+  unclassifiedValueTotal: number;
+  unclassifiedIncomeValue: number;
+  unclassifiedExpenseValue: number;
+  lowCoverage: boolean;
+}
+
+export interface NeedsReviewTransaction extends TransactionWithCategory {
+  legacyCategory: string | null;
+  sourceFilename: string | null;
+  daysPending: number;
+}
+
+export interface ImportRowActionItem {
+  id: number;
+  batchId: number;
+  rawRowNumber: number;
+  sourceFilename: string;
+  adapterKey: ImportAdapterKey;
+  date: string | null;
+  description: string | null;
+  counterparty: string | null;
+  amount: number | null;
+  direction: TransactionDirection | null;
+  importStatus: ImportRowStatus;
+  transactionStatus: "completed" | "pending";
+  classificationStatus: ClassificationStatus;
+  legacyCategory: string | null;
+  sourceCategory: string | null;
+  transactionId: number | null;
+  duplicateOfTransactionId: number | null;
+  isDuplicate: boolean;
+  createdAt: string;
+}
+
+export interface ImportHealthItem {
+  batchId: number;
+  sourceFilename: string;
+  adapterKey: ImportAdapterKey;
+  status: ImportBatchStatus;
+  createdAt: string;
+  totalRows: number;
+  importedRows: number;
+  pendingRows: number;
+  pendingDuplicates: number;
+  skippedDuplicates: number;
+  importedTransactions: number;
+  manuallyApproved: number;
+  autoClassified: number;
+  needsReview: number;
+  classificationPercent: number;
+}
+
 // ── Classification rules ──────────────────────────────────────────────────────
 
 export type RuleMatchField =

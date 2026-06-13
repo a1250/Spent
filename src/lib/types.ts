@@ -291,6 +291,69 @@ export interface ImportHealthItem {
   classificationPercent: number;
 }
 
+// ── Monthly P&L preview ──────────────────────────────────────────────────────
+
+export type PnLDetailSection =
+  | "operating_revenue"
+  | "refunds"
+  | "operating_expenses"
+  | "taxes"
+  | "uncertain";
+
+export interface MonthlyPnLDetail {
+  section: PnLDetailSection;
+  groupName: string;
+  categoryName: string;
+  amount: number;
+  transactionCount: number;
+}
+
+export interface PnLExcludedSummary {
+  internalTransfers: number;
+  investments: number;
+  workingCapital: number;
+  ownerMovements: number;
+}
+
+export interface MonthlyPnLRow {
+  month: string;
+  operatingRevenue: number;
+  refunds: number;
+  operatingExpenses: number;
+  taxes: number;
+  netPnL: number;
+  uncertainPnL: number;
+  classifiedValueCoverage: number;
+  needsReviewCount: number;
+  details: MonthlyPnLDetail[];
+  excluded: PnLExcludedSummary;
+}
+
+export interface PnLPreviewTotals {
+  operatingRevenue: number;
+  refunds: number;
+  operatingExpenses: number;
+  taxes: number;
+  netPnL: number;
+  uncertainPnL: number;
+}
+
+export interface MonthlyPnLPreview {
+  coverage: DataQualitySummary;
+  totals: PnLPreviewTotals;
+  excluded: PnLExcludedSummary;
+  months: MonthlyPnLRow[];
+  availableRange: {
+    fromMonth: string | null;
+    toMonth: string | null;
+  };
+  filters: {
+    fromMonth: string | null;
+    toMonth: string | null;
+    businessUnit: string | null;
+  };
+}
+
 // ── Classification rules ──────────────────────────────────────────────────────
 
 export type RuleMatchField =

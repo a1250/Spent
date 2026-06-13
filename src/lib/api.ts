@@ -25,6 +25,7 @@ import type {
   NeedsReviewTransaction,
   ImportRowActionItem,
   ImportHealthItem,
+  MonthlyPnLPreview,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -857,4 +858,23 @@ export function getImportRowsNeedingAction(params?: {
 
 export function getImportHealth() {
   return fetchJSON<ImportHealthItem[]>("/api/import/health");
+}
+
+export function getMonthlyPnLPreview(params?: {
+  fromMonth?: string;
+  toMonth?: string;
+  businessUnit?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.fromMonth) {
+    searchParams.set("fromMonth", params.fromMonth);
+  }
+  if (params?.toMonth) {
+    searchParams.set("toMonth", params.toMonth);
+  }
+  if (params?.businessUnit && params.businessUnit !== "all") {
+    searchParams.set("businessUnit", params.businessUnit);
+  }
+  const query = searchParams.size > 0 ? `?${searchParams}` : "";
+  return fetchJSON<MonthlyPnLPreview>(`/api/reports/pl${query}`);
 }

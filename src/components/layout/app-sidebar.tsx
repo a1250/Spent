@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   Upload,
   ListChecks,
+  FileChartColumn,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -63,6 +64,12 @@ const NAV: NavDef[] = [
     labelKey: "review",
     Icon: ListChecks,
     match: (p: string) => p.startsWith("/review"),
+  },
+  {
+    href: "/reports/pl",
+    labelKey: "reports",
+    Icon: FileChartColumn,
+    match: (p: string) => p.startsWith("/reports"),
   },
 ];
 

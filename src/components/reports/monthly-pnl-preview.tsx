@@ -11,6 +11,7 @@ import {
   Landmark,
   RefreshCcw,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getMonthlyPnLPreview, listBusinessUnits } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
@@ -30,6 +32,7 @@ import type {
   MonthlyPnLPreview,
   MonthlyPnLRow,
   PnLDetailSection,
+  PnLReportMode,
 } from "@/lib/types";
 
 const currency = new Intl.NumberFormat("he-IL", {
@@ -47,7 +50,14 @@ const SECTION_LABELS: Record<PnLDetailSection, string> = {
   uncertain: "Uncertain P&L",
 };
 
+const MODE_LABELS: Record<PnLReportMode, string> = {
+  business: "Business Only",
+  personal: "Personal Only",
+  all: "All Units",
+};
+
 export function MonthlyPnLPreviewPage() {
+  const [mode, setMode] = useState<PnLReportMode>("business");
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
   const [businessUnit, setBusinessUnit] = useState("all");
@@ -58,8 +68,9 @@ export function MonthlyPnLPreviewPage() {
       fromMonth: fromMonth || undefined,
       toMonth: toMonth || undefined,
       businessUnit: businessUnit === "all" ? undefined : businessUnit,
+      mode,
     }),
-    [businessUnit, fromMonth, toMonth]
+    [businessUnit, fromMonth, mode, toMonth]
   );
   const reportQuery = useQuery({
     queryKey: ["monthly-pnl-preview", queryParams],
@@ -71,6 +82,30 @@ export function MonthlyPnLPreviewPage() {
   });
 
   const report = reportQuery.data;
+  const availableBusinessUnits = useMemo(() => {
+    const units = businessUnitsQuery.data ?? [];
+    if (mode === "business") {
+      return units.filter(
+        (unit) =>
+          !["personal", "unknown", "shared"].includes(unit.slug)
+      );
+    }
+    if (mode === "all") {
+      return units.filter((unit) => unit.slug !== "unknown");
+    }
+    return units.filter((unit) => unit.slug === "personal");
+  }, [businessUnitsQuery.data, mode]);
+  const changeMode = (nextMode: string | number) => {
+    if (
+      nextMode === "business" ||
+      nextMode === "personal" ||
+      nextMode === "all"
+    ) {
+      setMode(nextMode);
+      setBusinessUnit("all");
+      setOpenMonths(new Set());
+    }
+  };
   const resetFilters = () => {
     setFromMonth("");
     setToMonth("");
@@ -101,7 +136,29 @@ export function MonthlyPnLPreviewPage() {
       />
 
       <main className="space-y-6 p-4 md:p-6 lg:p-8">
-        {report && <PreviewWarning report={report} />}
+        <section className="space-y-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <h2 className="font-serif text-xl">Report view</h2>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Keep business performance separate from personal activity.
+              </p>
+            </div>
+            <Tabs value={mode} onValueChange={changeMode}>
+              <TabsList className="grid w-full grid-cols-3 lg:w-[460px]">
+                <TabsTrigger value="business">Business Only</TabsTrigger>
+                <TabsTrigger value="personal">Personal Only</TabsTrigger>
+                <TabsTrigger value="all">All Units</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          {report && <ScopeSummaryCards report={report} mode={mode} />}
+        </section>
+
+        {report && <PreviewWarning report={report} mode={mode} />}
 
         <section className="rounded-2xl border bg-card p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
@@ -143,18 +200,45 @@ export function MonthlyPnLPreviewPage() {
             <label className="space-y-1 text-xs text-muted-foreground">
               <span>Business unit</span>
               <Select
-                value={businessUnit}
+                value={mode === "personal" ? "personal" : businessUnit}
                 onValueChange={(value) => {
                   if (value) setBusinessUnit(value);
                 }}
+                disabled={mode === "personal"}
               >
                 <SelectTrigger className="h-9 w-48 text-foreground">
-                  <SelectValue />
+                  <SelectValue>
+                    {(value: string) => {
+                      if (value === "all") {
+                        return mode === "business"
+                          ? "All business units"
+                          : "All units";
+                      }
+                      if (value === "unassigned") {
+                        return "Unassigned / unknown";
+                      }
+                      return (
+                        availableBusinessUnits.find(
+                          (unit) => unit.slug === value
+                        )?.label ?? value
+                      );
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All business units</SelectItem>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {(businessUnitsQuery.data ?? []).map((unit) => (
+                  {mode !== "personal" && (
+                    <SelectItem value="all">
+                      {mode === "business"
+                        ? "All business units"
+                        : "All units"}
+                    </SelectItem>
+                  )}
+                  {mode === "all" && (
+                    <SelectItem value="unassigned">
+                      Unassigned / unknown
+                    </SelectItem>
+                  )}
+                  {availableBusinessUnits.map((unit) => (
                     <SelectItem key={unit.slug} value={unit.slug}>
                       {unit.label}
                     </SelectItem>
@@ -191,6 +275,7 @@ export function MonthlyPnLPreviewPage() {
             <SummaryCards report={report} />
             <MonthlyTable
               months={report.months}
+              mode={report.filters.mode}
               openMonths={openMonths}
               onToggle={toggleMonth}
             />
@@ -202,8 +287,80 @@ export function MonthlyPnLPreviewPage() {
   );
 }
 
-function PreviewWarning({ report }: { report: MonthlyPnLPreview }) {
+function ScopeSummaryCards({
+  report,
+  mode,
+}: {
+  report: MonthlyPnLPreview;
+  mode: PnLReportMode;
+}) {
+  const cards = [
+    {
+      mode: "business" as const,
+      label: "Business Net P&L Preview",
+      summary: report.scopeSummaries.business,
+    },
+    {
+      mode: "personal" as const,
+      label: "Personal Net P&L Preview",
+      summary: report.scopeSummaries.personal,
+    },
+    {
+      mode: "all" as const,
+      label: "All Units Net P&L Preview",
+      summary: report.scopeSummaries.all,
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {cards.map((card) => (
+        <div
+          key={card.mode}
+          className={cn(
+            "rounded-2xl border bg-card p-4 transition-colors",
+            card.mode === mode &&
+              "border-foreground/30 bg-foreground/[0.035]"
+          )}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {card.label}
+            </span>
+            {card.mode === mode && (
+              <Badge variant="outline">Selected</Badge>
+            )}
+          </div>
+          <div
+            className={cn(
+              "mt-3 font-serif text-3xl tabular-nums",
+              card.summary.netPnL >= 0
+                ? "text-emerald-700 dark:text-emerald-300"
+                : "text-red-700 dark:text-red-300"
+            )}
+          >
+            {currency.format(card.summary.netPnL)}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {card.summary.transactionCount} classified P&L rows
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PreviewWarning({
+  report,
+  mode,
+}: {
+  report: MonthlyPnLPreview;
+  mode: PnLReportMode;
+}) {
   const summary = report.coverage;
+  const hasUnassignedRows =
+    report.scopeSummaries.unknown.transactionCount > 0 ||
+    report.scopeSummaries.shared.transactionCount > 0;
   const metrics = [
     ["Total transactions", summary.totalTransactions],
     ["Classified", summary.classifiedTransactions],
@@ -236,6 +393,22 @@ function PreviewWarning({ report }: { report: MonthlyPnLPreview }) {
               Headline P&L excludes every needs-review, uncertain, transfer,
               investment, financing, and working-capital row.
             </p>
+            <p className="mt-1 text-xs text-amber-900/65 dark:text-amber-100/60">
+              Coverage stays all-units for the selected month range so
+              unassigned review work remains visible.
+            </p>
+            {mode === "all" && (
+              <p className="mt-3 rounded-lg border border-amber-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-amber-950 dark:text-amber-100">
+                This view mixes business and personal activity. Use Business
+                Only for business performance.
+              </p>
+            )}
+            {mode === "business" && hasUnassignedRows && (
+              <p className="mt-3 rounded-lg border border-amber-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-amber-950 dark:text-amber-100">
+                Some classified rows are unknown/shared and are excluded from
+                this business view.
+              </p>
+            )}
           </div>
         </div>
         <Button
@@ -292,7 +465,7 @@ function SummaryCards({ report }: { report: MonthlyPnLPreview }) {
       tone: "",
     },
     {
-      label: "Net P&L Preview",
+      label: `${MODE_LABELS[report.filters.mode]} Net P&L`,
       value: report.totals.netPnL,
       tone:
         report.totals.netPnL >= 0
@@ -336,10 +509,12 @@ function SummaryCards({ report }: { report: MonthlyPnLPreview }) {
 
 function MonthlyTable({
   months,
+  mode,
   openMonths,
   onToggle,
 }: {
   months: MonthlyPnLRow[];
+  mode: PnLReportMode;
   openMonths: Set<string>;
   onToggle: (month: string) => void;
 }) {
@@ -350,7 +525,9 @@ function MonthlyTable({
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="font-serif text-xl">Monthly preview</h2>
+        <h2 className="font-serif text-xl">
+          {MODE_LABELS[mode]} monthly preview
+        </h2>
         <p className="text-sm text-muted-foreground">
           Expand a month to inspect server-aggregated category groups.
         </p>

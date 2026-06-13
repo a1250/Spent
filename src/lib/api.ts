@@ -26,6 +26,7 @@ import type {
   ImportRowActionItem,
   ImportHealthItem,
   MonthlyPnLPreview,
+  PnLReportMode,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -864,6 +865,7 @@ export function getMonthlyPnLPreview(params?: {
   fromMonth?: string;
   toMonth?: string;
   businessUnit?: string;
+  mode?: PnLReportMode;
 }) {
   const searchParams = new URLSearchParams();
   if (params?.fromMonth) {
@@ -874,6 +876,9 @@ export function getMonthlyPnLPreview(params?: {
   }
   if (params?.businessUnit && params.businessUnit !== "all") {
     searchParams.set("businessUnit", params.businessUnit);
+  }
+  if (params?.mode) {
+    searchParams.set("mode", params.mode);
   }
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
   return fetchJSON<MonthlyPnLPreview>(`/api/reports/pl${query}`);

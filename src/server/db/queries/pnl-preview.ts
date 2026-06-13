@@ -8,6 +8,9 @@ import type {
   MonthlyPnLRow,
   PnLExcludedSummary,
   PnLPreviewTotals,
+  PnLReportMode,
+  PnLScopeSummaries,
+  PnLScopeSummary,
 } from "@/lib/types";
 
 const CLASSIFIED_STATUSES =
@@ -18,6 +21,7 @@ export interface PnLPreviewFilters {
   fromMonth?: string;
   toMonth?: string;
   businessUnit?: string;
+  mode?: PnLReportMode;
 }
 
 interface SqlFilter {
@@ -53,7 +57,7 @@ function nextMonth(month: string): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function buildFilter(
+function buildTemporalFilter(
   workspaceId: number,
   filters: PnLPreviewFilters,
   alias = "t"
@@ -69,9 +73,38 @@ function buildFilter(
     conditions.push(`${alias}.date < ?`);
     params.push(nextMonth(filters.toMonth));
   }
-  if (filters.businessUnit === "unassigned") {
+
+  return {
+    where: conditions.join(" AND "),
+    params,
+  };
+}
+
+function buildFilter(
+  workspaceId: number,
+  filters: PnLPreviewFilters,
+  alias = "t"
+): SqlFilter {
+  const temporal = buildTemporalFilter(workspaceId, filters, alias);
+  const conditions = [temporal.where];
+  const params = [...temporal.params];
+  const mode = filters.mode ?? "business";
+
+  if (mode === "business") {
     conditions.push(
-      `(${alias}.business_unit IS NULL OR ${alias}.business_unit = '')`
+      `${alias}.business_unit IS NOT NULL`,
+      `${alias}.business_unit != ''`,
+      `${alias}.business_unit NOT IN ('personal', 'unknown', 'shared')`
+    );
+    if (filters.businessUnit) {
+      conditions.push(`${alias}.business_unit = ?`);
+      params.push(filters.businessUnit);
+    }
+  } else if (mode === "personal") {
+    conditions.push(`${alias}.business_unit = 'personal'`);
+  } else if (filters.businessUnit === "unassigned") {
+    conditions.push(
+      `(${alias}.business_unit IS NULL OR ${alias}.business_unit = '' OR ${alias}.business_unit = 'unknown')`
     );
   } else if (filters.businessUnit) {
     conditions.push(`${alias}.business_unit = ?`);
@@ -84,11 +117,88 @@ function buildFilter(
   };
 }
 
+function emptyScopeSummary(): PnLScopeSummary {
+  return {
+    netPnL: 0,
+    uncertainPnL: 0,
+    transactionCount: 0,
+  };
+}
+
+function getPnLScopeSummaries(
+  workspaceId: number,
+  filters: PnLPreviewFilters
+): PnLScopeSummaries {
+  const temporal = buildTemporalFilter(workspaceId, filters);
+  const rows = getDb()
+    .prepare(
+      `SELECT
+         CASE
+           WHEN t.business_unit = 'personal' THEN 'personal'
+           WHEN t.business_unit = 'shared' THEN 'shared'
+           WHEN t.business_unit IS NULL
+             OR t.business_unit = ''
+             OR t.business_unit = 'unknown'
+             THEN 'unknown'
+           ELSE 'business'
+         END AS scope,
+         COALESCE(SUM(CASE
+           WHEN t.classification_status IN ${CLASSIFIED_STATUSES}
+            AND t.pnl_impact = 'yes'
+            AND t.cash_flow_type IN ${REAL_CASH_TYPES}
+            AND t.financial_nature IN (
+              'operating_income', 'operating_expense', 'tax', 'refund'
+            )
+           THEN t.charged_amount ELSE 0 END), 0) AS netPnL,
+         COALESCE(SUM(CASE
+           WHEN t.classification_status IN ${CLASSIFIED_STATUSES}
+            AND t.pnl_impact = 'maybe'
+            AND t.cash_flow_type IN ${REAL_CASH_TYPES}
+           THEN t.charged_amount ELSE 0 END), 0) AS uncertainPnL,
+         SUM(CASE
+           WHEN t.classification_status IN ${CLASSIFIED_STATUSES}
+            AND t.cash_flow_type IN ${REAL_CASH_TYPES}
+            AND (
+              (
+                t.pnl_impact = 'yes'
+                AND t.financial_nature IN (
+                  'operating_income', 'operating_expense', 'tax', 'refund'
+                )
+              )
+              OR t.pnl_impact = 'maybe'
+            )
+           THEN 1 ELSE 0 END) AS transactionCount
+       FROM transactions t
+       WHERE ${temporal.where}
+       GROUP BY scope`
+    )
+    .all(...temporal.params) as Array<PnLScopeSummary & {
+    scope: Exclude<keyof PnLScopeSummaries, "all">;
+  }>;
+
+  const summaries: PnLScopeSummaries = {
+    business: emptyScopeSummary(),
+    personal: emptyScopeSummary(),
+    all: emptyScopeSummary(),
+    unknown: emptyScopeSummary(),
+    shared: emptyScopeSummary(),
+  };
+
+  for (const { scope, ...summary } of rows) {
+    summaries[scope] = summary;
+    summaries.all.netPnL += summary.netPnL;
+    summaries.all.uncertainPnL += summary.uncertainPnL;
+    summaries.all.transactionCount += summary.transactionCount;
+  }
+
+  return summaries;
+}
+
 export function getPnLCoverageSummary(
   workspaceId: number,
   filters: PnLPreviewFilters = {}
 ): DataQualitySummary {
-  const filter = buildFilter(workspaceId, filters);
+  const filter = buildTemporalFilter(workspaceId, filters);
   const row = getDb()
     .prepare(
       `SELECT
@@ -355,6 +465,7 @@ export function getMonthlyPnLPreview(
   return {
     coverage: getPnLCoverageSummary(workspaceId, filters),
     totals,
+    scopeSummaries: getPnLScopeSummaries(workspaceId, filters),
     excluded,
     months,
     availableRange: range,
@@ -362,6 +473,7 @@ export function getMonthlyPnLPreview(
       fromMonth: filters.fromMonth ?? null,
       toMonth: filters.toMonth ?? null,
       businessUnit: filters.businessUnit ?? null,
+      mode: filters.mode ?? "business",
     },
   };
 }

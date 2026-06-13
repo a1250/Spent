@@ -338,9 +338,26 @@ export interface PnLPreviewTotals {
   uncertainPnL: number;
 }
 
+export type PnLReportMode = "business" | "personal" | "all";
+
+export interface PnLScopeSummary {
+  netPnL: number;
+  uncertainPnL: number;
+  transactionCount: number;
+}
+
+export interface PnLScopeSummaries {
+  business: PnLScopeSummary;
+  personal: PnLScopeSummary;
+  all: PnLScopeSummary;
+  unknown: PnLScopeSummary;
+  shared: PnLScopeSummary;
+}
+
 export interface MonthlyPnLPreview {
   coverage: DataQualitySummary;
   totals: PnLPreviewTotals;
+  scopeSummaries: PnLScopeSummaries;
   excluded: PnLExcludedSummary;
   months: MonthlyPnLRow[];
   availableRange: {
@@ -351,6 +368,7 @@ export interface MonthlyPnLPreview {
     fromMonth: string | null;
     toMonth: string | null;
     businessUnit: string | null;
+    mode: PnLReportMode;
   };
 }
 

@@ -12,6 +12,7 @@ import {
   FileChartColumn,
   ChartNoAxesCombined,
   Building2,
+  Landmark,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -68,9 +69,15 @@ const NAV: NavDef[] = [
     match: (p: string) => p.startsWith("/review"),
   },
   {
-    href: "/reports/pl",
+    href: "/reports",
     labelKey: "reports",
     Icon: FileChartColumn,
+    match: (p: string) => p === "/reports",
+  },
+  {
+    href: "/reports/pl",
+    labelKey: "pnlPreview",
+    Icon: Landmark,
     match: (p: string) => p.startsWith("/reports/pl"),
   },
   {

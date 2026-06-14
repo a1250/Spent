@@ -394,15 +394,19 @@ function CoverageWarning({
               Classified cash flow preview
             </p>
             <h2 className="mt-1 max-w-4xl font-serif text-xl leading-snug text-sky-950 dark:text-sky-100">
-              Preview only: {summary.needsReviewTransactions.toLocaleString(
+              Preview only. Based on classified transactions.{" "}
+              {summary.needsReviewTransactions.toLocaleString(
                 "en-US"
               )}{" "}
-              transactions still need review and are excluded.
+              transactions still need review.
             </h2>
             <p className="mt-2 text-sm text-sky-900/75 dark:text-sky-100/70">
-              Net Cash Flow includes operating, investing, and financing cash.
-              Internal transfers are displayed separately and never inflate
-              the headline.
+              Needs-review rows are excluded from financial totals. Net Cash
+              Flow includes operating, investing, and financing cash; internal
+              transfers stay separate.
+            </p>
+            <p className="mt-1 text-xs text-sky-900/65 dark:text-sky-100/60">
+              Coverage by value/count is shown to indicate reliability.
             </p>
             {mode === "all" && (
               <p className="mt-3 rounded-lg border border-sky-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-sky-950 dark:text-sky-100">

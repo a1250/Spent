@@ -392,18 +392,18 @@ function PreviewWarning({
               Low-confidence financial preview
             </p>
             <h2 className="mt-1 max-w-4xl font-serif text-xl leading-snug text-amber-950 dark:text-amber-100">
-              Preview only: this report is based on classified transactions.
-              There are still{" "}
+              Preview only. Based on classified transactions. There are still{" "}
               {summary.needsReviewTransactions.toLocaleString("en-US")}{" "}
               transactions needing review.
             </h2>
             <p className="mt-2 text-sm text-amber-900/75 dark:text-amber-100/70">
-              Headline P&L excludes every needs-review, uncertain, transfer,
-              investment, financing, and working-capital row.
+              Needs-review rows are excluded from financial totals. Headline
+              P&L also excludes uncertain, transfer, investment, financing,
+              and working-capital rows.
             </p>
             <p className="mt-1 text-xs text-amber-900/65 dark:text-amber-100/60">
-              Coverage stays all-units for the selected month range so
-              unassigned review work remains visible.
+              Coverage by value/count is shown to indicate reliability. It
+              stays all-units for the selected month range.
             </p>
             {mode === "all" && (
               <p className="mt-3 rounded-lg border border-amber-600/20 bg-background/55 px-3 py-2 text-sm font-medium text-amber-950 dark:text-amber-100">

@@ -220,9 +220,13 @@ function CoverageBanner({ report }: { report: BusinessUnitDashboard }) {
             </h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            Preview only. Based on classified transactions.{" "}
             {integer.format(coverage.needsReviewTransactions)} transactions
-            still need review. Financial totals use classified rows only;
-            coverage measures every transaction in each unit&apos;s scope.
+            still need review.
+          </p>
+          <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+            Needs-review rows are excluded from financial totals. Coverage by
+            value/count is shown to indicate reliability.
           </p>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-amber-950/10 dark:bg-white/10">
             <div

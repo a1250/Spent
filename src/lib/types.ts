@@ -422,8 +422,12 @@ export interface CashFlowScopeSummaries {
 
 export interface MonthlyCashFlowRow extends CashFlowTotals {
   month: string;
-  classifiedValueCoverage: number;
+  totalTransactions: number;
+  classifiedTransactions: number;
   needsReviewCount: number;
+  coverageByCount: number;
+  classifiedValueCoverage: number;
+  unclassifiedValue: number;
   details: MonthlyCashFlowDetail[];
 }
 

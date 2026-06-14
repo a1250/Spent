@@ -534,7 +534,7 @@ function MonthlyTable({
         </p>
       </div>
       <div className="overflow-x-auto rounded-2xl border bg-card">
-        <table className="w-full min-w-[1700px] text-sm">
+        <table className="w-full min-w-[2250px] text-sm">
           <thead>
             <tr className="border-b bg-muted/35 text-xs text-muted-foreground">
               <th className="px-3 py-3 text-start font-medium">Month</th>
@@ -553,6 +553,22 @@ function MonthlyTable({
                 Internal Movement
               </th>
               <th className="px-3 py-3 text-end font-medium">Net Cash Flow</th>
+              <th className="px-3 py-3 text-center font-medium">Total</th>
+              <th className="px-3 py-3 text-center font-medium">
+                Classified
+              </th>
+              <th className="px-3 py-3 text-center font-medium">
+                Needs Review
+              </th>
+              <th className="px-3 py-3 text-center font-medium">
+                Count Coverage
+              </th>
+              <th className="px-3 py-3 text-center font-medium">
+                Value Coverage
+              </th>
+              <th className="px-3 py-3 text-end font-medium">
+                Unclassified Value
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -612,10 +628,16 @@ function MonthRows({
         <MoneyCell value={month.internalOut} internal />
         <MoneyCell value={month.internalMovementTotal} internal />
         <MoneyCell value={month.netCashFlow} net featured />
+        <CountCell value={month.totalTransactions} />
+        <CountCell value={month.classifiedTransactions} />
+        <CountCell value={month.needsReviewCount} warning />
+        <CoverageCell value={month.coverageByCount} />
+        <CoverageCell value={month.classifiedValueCoverage} />
+        <MoneyCell value={month.unclassifiedValue} warning />
       </tr>
       {isOpen && (
         <tr className="border-b bg-muted/[0.12]">
-          <td colSpan={14} className="p-0">
+          <td colSpan={20} className="p-0">
             <MonthDetails month={month} />
           </td>
         </tr>
@@ -783,12 +805,14 @@ function MoneyCell({
   net = false,
   internal = false,
   featured = false,
+  warning = false,
 }: {
   value: number;
   inflow?: boolean;
   net?: boolean;
   internal?: boolean;
   featured?: boolean;
+  warning?: boolean;
 }) {
   return (
     <td
@@ -800,10 +824,47 @@ function MoneyCell({
             ? "font-semibold text-emerald-700 dark:text-emerald-300"
             : "font-semibold text-red-700 dark:text-red-300"),
         internal && value !== 0 && "text-sky-700 dark:text-sky-300",
+        warning && value > 0 && "text-amber-700 dark:text-amber-300",
         featured && "bg-foreground/[0.025]"
       )}
     >
       {currency.format(value)}
+    </td>
+  );
+}
+
+function CountCell({
+  value,
+  warning = false,
+}: {
+  value: number;
+  warning?: boolean;
+}) {
+  return (
+    <td
+      className={cn(
+        "px-3 py-3 text-center font-mono tabular-nums",
+        warning && value > 0 && "text-amber-700 dark:text-amber-300"
+      )}
+    >
+      {value.toLocaleString("en-US")}
+    </td>
+  );
+}
+
+function CoverageCell({ value }: { value: number }) {
+  return (
+    <td className="px-3 py-3 text-center">
+      <Badge
+        variant="outline"
+        className={
+          value >= 70
+            ? "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+            : "border-amber-500/30 text-amber-700 dark:text-amber-300"
+        }
+      >
+        {value.toFixed(1)}%
+      </Badge>
     </td>
   );
 }

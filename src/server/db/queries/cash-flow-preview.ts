@@ -38,9 +38,16 @@ interface SqlFilter {
 
 interface MonthlyAggregateRow extends CashFlowTotals {
   month: string;
+}
+
+interface MonthlyCoverageRow {
+  month: string;
+  totalTransactions: number;
+  classifiedTransactions: number;
+  needsReviewCount: number;
   classifiedAbsoluteValue: number;
   totalAbsoluteValue: number;
-  needsReviewCount: number;
+  unclassifiedValue: number;
 }
 
 function percentage(numerator: number, denominator: number): number {
@@ -278,12 +285,7 @@ export function getMonthlyCashFlowPreview(
          COALESCE(SUM(CASE
            WHEN t.cash_flow_type != 'internal_transfer'
             AND t.financial_nature NOT IN ${INTERNAL_NATURES}
-           THEN t.charged_amount ELSE 0 END), 0) AS netCashFlow,
-         COALESCE(SUM(CASE
-           WHEN t.classification_status != 'needs_review'
-           THEN ABS(t.charged_amount) ELSE 0 END), 0) AS classifiedAbsoluteValue,
-         COALESCE(SUM(ABS(t.charged_amount)), 0) AS totalAbsoluteValue,
-         SUM(t.classification_status = 'needs_review') AS needsReviewCount
+           THEN t.charged_amount ELSE 0 END), 0) AS netCashFlow
        FROM transactions t
        WHERE ${filter.where}
          AND t.classification_status IN ${CLASSIFIED_STATUSES}
@@ -293,6 +295,33 @@ export function getMonthlyCashFlowPreview(
        ORDER BY month DESC`
     )
     .all(...filter.params) as MonthlyAggregateRow[];
+
+  const monthlyCoverageRows = db
+    .prepare(
+      `SELECT
+         substr(t.date, 1, 7) AS month,
+         COUNT(*) AS totalTransactions,
+         COALESCE(SUM(
+           t.classification_status IN ${CLASSIFIED_STATUSES}
+         ), 0) AS classifiedTransactions,
+         COALESCE(SUM(
+           t.classification_status = 'needs_review'
+         ), 0) AS needsReviewCount,
+         COALESCE(SUM(CASE
+           WHEN t.classification_status IN ${CLASSIFIED_STATUSES}
+           THEN ABS(t.charged_amount) ELSE 0 END), 0)
+           AS classifiedAbsoluteValue,
+         COALESCE(SUM(ABS(t.charged_amount)), 0) AS totalAbsoluteValue,
+         COALESCE(SUM(CASE
+           WHEN t.classification_status NOT IN ${CLASSIFIED_STATUSES}
+           THEN ABS(t.charged_amount) ELSE 0 END), 0)
+           AS unclassifiedValue
+       FROM transactions t
+       WHERE ${filter.where}
+       GROUP BY substr(t.date, 1, 7)
+       ORDER BY month DESC`
+    )
+    .all(...filter.params) as MonthlyCoverageRow[];
 
   const detailRows = db
     .prepare(
@@ -338,14 +367,33 @@ export function getMonthlyCashFlowPreview(
     detailsByMonth.set(month, details);
   }
 
-  const months: MonthlyCashFlowRow[] = monthlyRows.map((row) => ({
-    ...row,
-    classifiedValueCoverage: percentage(
-      row.classifiedAbsoluteValue,
-      row.totalAbsoluteValue
-    ),
-    details: detailsByMonth.get(row.month) ?? [],
-  }));
+  const aggregatesByMonth = new Map(
+    monthlyRows.map((row) => [row.month, row])
+  );
+  const months: MonthlyCashFlowRow[] = monthlyCoverageRows.map((coverage) => {
+    const aggregate =
+      aggregatesByMonth.get(coverage.month) ?? {
+        month: coverage.month,
+        ...emptyTotals(),
+      };
+
+    return {
+      ...aggregate,
+      totalTransactions: coverage.totalTransactions,
+      classifiedTransactions: coverage.classifiedTransactions,
+      needsReviewCount: coverage.needsReviewCount,
+      coverageByCount: percentage(
+        coverage.classifiedTransactions,
+        coverage.totalTransactions
+      ),
+      classifiedValueCoverage: percentage(
+        coverage.classifiedAbsoluteValue,
+        coverage.totalAbsoluteValue
+      ),
+      unclassifiedValue: coverage.unclassifiedValue,
+      details: detailsByMonth.get(coverage.month) ?? [],
+    };
+  });
 
   const totals = months.reduce<CashFlowTotals>(
     (sum, month) => ({

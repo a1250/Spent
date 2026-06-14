@@ -203,7 +203,9 @@ export function getPnLCoverageSummary(
     .prepare(
       `SELECT
          COUNT(*) AS totalTransactions,
-         SUM(classification_status != 'needs_review') AS classifiedTransactions,
+         SUM(
+           classification_status IN ${CLASSIFIED_STATUSES}
+         ) AS classifiedTransactions,
          SUM(classification_status = 'needs_review') AS needsReviewTransactions,
          COALESCE(SUM(ABS(charged_amount)), 0) AS totalAbsoluteValue,
          COALESCE(SUM(
@@ -326,7 +328,7 @@ export function getMonthlyPnLPreview(
             AND t.cash_flow_type IN ${REAL_CASH_TYPES}
            THEN t.charged_amount ELSE 0 END), 0) AS uncertainPnL,
          COALESCE(SUM(CASE
-           WHEN t.classification_status != 'needs_review'
+           WHEN t.classification_status IN ${CLASSIFIED_STATUSES}
            THEN ABS(t.charged_amount) ELSE 0 END), 0) AS classifiedAbsoluteValue,
          COALESCE(SUM(ABS(t.charged_amount)), 0) AS totalAbsoluteValue,
          SUM(t.classification_status = 'needs_review') AS needsReviewCount,

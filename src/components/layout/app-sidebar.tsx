@@ -11,6 +11,7 @@ import {
   ListChecks,
   FileChartColumn,
   ChartNoAxesCombined,
+  Building2,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -77,6 +78,12 @@ const NAV: NavDef[] = [
     labelKey: "cashFlow",
     Icon: ChartNoAxesCombined,
     match: (p: string) => p.startsWith("/reports/cashflow"),
+  },
+  {
+    href: "/reports/business-units",
+    labelKey: "businessUnits",
+    Icon: Building2,
+    match: (p: string) => p.startsWith("/reports/business-units"),
   },
 ];
 

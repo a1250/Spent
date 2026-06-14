@@ -28,6 +28,7 @@ import type {
   MonthlyPnLPreview,
   PnLReportMode,
   MonthlyCashFlowPreview,
+  BusinessUnitDashboard,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -907,5 +908,11 @@ export function getMonthlyCashFlowPreview(params?: {
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
   return fetchJSON<MonthlyCashFlowPreview>(
     `/api/reports/cashflow${query}`
+  );
+}
+
+export function getBusinessUnitDashboard() {
+  return fetchJSON<BusinessUnitDashboard>(
+    "/api/reports/business-units"
   );
 }

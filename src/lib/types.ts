@@ -448,6 +448,70 @@ export interface MonthlyCashFlowPreview {
   };
 }
 
+// ── Business unit dashboard ─────────────────────────────────────────────────
+
+export interface BusinessUnitDashboardTransaction {
+  id: number;
+  date: string;
+  description: string;
+  counterparty: string | null;
+  amount: number;
+  financialNature: FinancialNature;
+  categoryName: string | null;
+  classificationStatus: ClassificationStatus;
+}
+
+export interface BusinessUnitMonthlySummary {
+  month: string;
+  netPnL: number;
+  uncertainPnL: number;
+  netCashFlow: number;
+  internalMovementTotal: number;
+  totalTransactions: number;
+  classifiedTransactions: number;
+  needsReviewTransactions: number;
+  coverageByCount: number;
+  coverageByValue: number;
+}
+
+export type BusinessUnitWarning =
+  | "low_coverage"
+  | "unknown_business_unit"
+  | "shared_not_allocated"
+  | "high_uncertain_pnl"
+  | "no_classified_rows"
+  | "needs_review_high_value";
+
+export interface BusinessUnitDashboardRow {
+  id: number;
+  slug: string;
+  label: string;
+  color: string | null;
+  sortOrder: number;
+  pnl: PnLPreviewTotals;
+  cashFlow: CashFlowTotals;
+  quality: DataQualitySummary;
+  warnings: BusinessUnitWarning[];
+  months: BusinessUnitMonthlySummary[];
+  topIncome: BusinessUnitDashboardTransaction[];
+  topExpenses: BusinessUnitDashboardTransaction[];
+  topNeedsReview: BusinessUnitDashboardTransaction[];
+}
+
+export interface BusinessUnitDashboard {
+  coverage: DataQualitySummary;
+  summary: {
+    businessNetPnL: number;
+    businessNetCashFlow: number;
+    personalNetPnL: number;
+    personalNetCashFlow: number;
+    allUnitsNetPnL: number;
+    allUnitsNetCashFlow: number;
+    needsReviewTransactions: number;
+  };
+  units: BusinessUnitDashboardRow[];
+}
+
 // ── Classification rules ──────────────────────────────────────────────────────
 
 export type RuleMatchField =

@@ -9,6 +9,7 @@ import {
   ChartNoAxesCombined,
   FileChartColumn,
   ListChecks,
+  ShieldCheck,
   Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
@@ -18,6 +19,7 @@ import {
   getDataQualitySummary,
   getImportHealth,
   getMonthlyCashFlowPreview,
+  getRuleEffectivenessReport,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +48,10 @@ export function ReportsHubPage() {
   const importHealthQuery = useQuery({
     queryKey: ["import-health"],
     queryFn: getImportHealth,
+  });
+  const rulesQuery = useQuery({
+    queryKey: ["rule-effectiveness"],
+    queryFn: getRuleEffectivenessReport,
   });
 
   const dashboard = dashboardQuery.data;
@@ -219,6 +225,29 @@ export function ReportsHubPage() {
           />
 
           <ReportCard
+            href="/reports/rules"
+            eyebrow="Classification learning"
+            title="Rule Effectiveness"
+            description="Track future auto-classifications attributed to explicitly approved rules."
+            icon={ShieldCheck}
+            accent="violet"
+            metric={
+              rulesQuery.data
+                ? integer.format(
+                    rulesQuery.data.summary.totalUserApprovedRules
+                  )
+                : "Loading..."
+            }
+            metricLabel="User-approved rules"
+            note={
+              rulesQuery.data
+                ? `${integer.format(rulesQuery.data.summary.rulesWithApplications)} rules have applications`
+                : "Rule attribution loading"
+            }
+            warning="Existing manual classifications were not retroactively assigned."
+          />
+
+          <ReportCard
             href="/import"
             eyebrow="Import operations"
             title="Import Health"
@@ -245,7 +274,6 @@ export function ReportsHubPage() {
                 ? "Potential duplicates are retained for review."
                 : "No pending duplicate warning."
             }
-            className="lg:col-span-2"
           />
         </section>
 

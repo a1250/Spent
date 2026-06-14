@@ -13,6 +13,7 @@ import type {
   TransactionDirection,
   BusinessUnit,
   RuleEffectiveness,
+  RuleEffectivenessReport,
 } from "@/lib/types";
 
 const RULE_COLUMNS = `
@@ -317,6 +318,54 @@ export function getUserApprovedRuleEffectiveness(
     ...row,
     isActive: Boolean(row.isActive),
   })) as RuleEffectiveness[];
+}
+
+export function getRuleEffectivenessReport(
+  workspaceId: number
+): RuleEffectivenessReport {
+  const rules = getUserApprovedRuleEffectiveness(workspaceId);
+  const provenance = getDb()
+    .prepare(
+      `SELECT
+         COUNT(*) AS totalAutoClassifiedRowsWithRule,
+         AVG(applied_rule_confidence) AS averageAppliedConfidence
+       FROM import_rows
+       WHERE workspace_id = ?
+         AND classification_status = 'auto_classified'
+         AND applied_rule_id IS NOT NULL`
+    )
+    .get(workspaceId) as {
+    totalAutoClassifiedRowsWithRule: number;
+    averageAppliedConfidence: number | null;
+  };
+  const legacy = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM classification_rules
+       WHERE workspace_id = ?
+         AND rule_source IN ('legacy_index', 'legacy_seed')`
+    )
+    .get(workspaceId) as { count: number };
+  const rulesWithApplications = rules.filter(
+    (rule) => rule.appliedRows > 0
+  ).length;
+
+  return {
+    summary: {
+      totalUserApprovedRules: rules.length,
+      activeUserApprovedRules: rules.filter((rule) => rule.isActive).length,
+      rulesWithApplications,
+      rulesWithoutApplications: rules.length - rulesWithApplications,
+      totalAutoClassifiedRowsWithRule:
+        provenance.totalAutoClassifiedRowsWithRule,
+      averageAppliedConfidence:
+        provenance.averageAppliedConfidence == null
+          ? null
+          : Math.round(provenance.averageAppliedConfidence * 1000) / 1000,
+      legacyRules: legacy.count,
+    },
+    rules,
+  };
 }
 
 export function incrementRuleTimesApplied(ruleId: number): void {

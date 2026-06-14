@@ -593,6 +593,19 @@ export interface RuleEffectiveness {
   averageAppliedConfidence: number | null;
 }
 
+export interface RuleEffectivenessReport {
+  summary: {
+    totalUserApprovedRules: number;
+    activeUserApprovedRules: number;
+    rulesWithApplications: number;
+    rulesWithoutApplications: number;
+    totalAutoClassifiedRowsWithRule: number;
+    averageAppliedConfidence: number | null;
+    legacyRules: number;
+  };
+  rules: RuleEffectiveness[];
+}
+
 export interface TransactionWithCategory extends Transaction {
   categoryName: string | null;
   categoryColor: string | null;

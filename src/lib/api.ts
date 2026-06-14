@@ -29,6 +29,7 @@ import type {
   PnLReportMode,
   MonthlyCashFlowPreview,
   BusinessUnitDashboard,
+  RuleEffectivenessReport,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -915,4 +916,8 @@ export function getBusinessUnitDashboard() {
   return fetchJSON<BusinessUnitDashboard>(
     "/api/reports/business-units"
   );
+}
+
+export function getRuleEffectivenessReport() {
+  return fetchJSON<RuleEffectivenessReport>("/api/reports/rules");
 }

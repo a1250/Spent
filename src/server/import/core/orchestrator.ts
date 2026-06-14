@@ -22,6 +22,7 @@ import {
   markImportRowDedup,
   markImportRowPendingDuplicate,
   markImportRowSkippedDuplicate,
+  setImportRowRuleProvenance,
   updateImportRowClassification,
   updateImportRowNormalized,
 } from "@/server/db/queries/import-rows";
@@ -142,7 +143,7 @@ export async function parseAndStageFile(
     const classificationRules =
       adapter.key === "legacy-excel"
         ? allRules
-        : allRules.filter((rule) => rule.createdFrom === "user");
+        : allRules.filter((rule) => rule.ruleSource === "user_approved");
 
     let needsReview = 0;
     let autoClassified = 0;
@@ -279,6 +280,13 @@ export async function parseAndStageFile(
               ? `Matched rule(s): ${classification.matchedRuleIds.join(", ")}`
               : null,
         });
+        if (classification.appliedRuleId != null) {
+          setImportRowRuleProvenance(workspaceId, row.id, {
+            appliedRuleId: classification.appliedRuleId,
+            appliedRuleConfidence: classification.confidenceScore,
+            appliedRuleSource: "user_approved",
+          });
+        }
 
         if (dedup.isDuplicate) {
           duplicates++;

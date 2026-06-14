@@ -12,6 +12,7 @@ import type {
   PnlImpact,
   TransactionDirection,
   BusinessUnit,
+  RuleEffectiveness,
 } from "@/lib/types";
 
 const RULE_COLUMNS = `
@@ -275,6 +276,47 @@ export function getActiveRulesForEngine(workspaceId: number): ClassificationRule
     )
     .all(workspaceId) as Record<string, unknown>[];
   return rows.map(hydrate);
+}
+
+export function getUserApprovedRuleEffectiveness(
+  workspaceId: number
+): RuleEffectiveness[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT
+         r.id                  as ruleId,
+         r.rule_source         as ruleSource,
+         r.match_field         as matchField,
+         r.match_type          as matchType,
+         r.match_value         as matchValue,
+         r.category_id         as categoryId,
+         c.name                as categoryName,
+         r.financial_nature    as financialNature,
+         r.cash_flow_type      as cashFlowType,
+         r.pnl_impact          as pnlImpact,
+         r.business_unit       as businessUnit,
+         r.is_active           as isActive,
+         r.created_at          as createdAt,
+         COUNT(ir.id)          as appliedRows,
+         MAX(ir.applied_rule_at) as lastAppliedAt,
+         AVG(ir.applied_rule_confidence) as averageAppliedConfidence
+       FROM classification_rules r
+       LEFT JOIN categories c
+         ON c.id = r.category_id
+       LEFT JOIN import_rows ir
+         ON ir.workspace_id = r.workspace_id
+        AND ir.applied_rule_id = r.id
+       WHERE r.workspace_id = ?
+         AND r.rule_source = 'user_approved'
+       GROUP BY r.id
+       ORDER BY appliedRows DESC, r.id ASC`
+    )
+    .all(workspaceId) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    ...row,
+    isActive: Boolean(row.isActive),
+  })) as RuleEffectiveness[];
 }
 
 export function incrementRuleTimesApplied(ruleId: number): void {

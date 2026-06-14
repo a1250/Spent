@@ -8,6 +8,7 @@ import type {
   FinancialNature,
   CashFlowType,
   PnlImpact,
+  RuleSource,
 } from "@/lib/types";
 
 const ROW_COLUMNS = `
@@ -35,6 +36,10 @@ const ROW_COLUMNS = `
   r.classification_status as classificationStatus,
   r.confidence_score      as confidenceScore,
   r.ai_explanation        as aiExplanation,
+  r.applied_rule_id       as appliedRuleId,
+  r.applied_rule_confidence as appliedRuleConfidence,
+  r.applied_rule_at       as appliedRuleAt,
+  r.applied_rule_source   as appliedRuleSource,
   r.dedup_hash            as dedupHash,
   r.is_duplicate          as isDuplicate,
   r.duplicate_of_transaction_id as duplicateOfTransactionId,
@@ -349,6 +354,34 @@ export function updateImportRowClassification(
   getDb()
     .prepare(`UPDATE import_rows SET ${sets.join(", ")}, updated_at = datetime('now') WHERE workspace_id = ? AND id = ?`)
     .run(...params);
+}
+
+export function setImportRowRuleProvenance(
+  workspaceId: number,
+  rowId: number,
+  data: {
+    appliedRuleId: number;
+    appliedRuleConfidence: number;
+    appliedRuleSource: RuleSource;
+  }
+): void {
+  getDb()
+    .prepare(
+      `UPDATE import_rows
+       SET applied_rule_id = ?,
+           applied_rule_confidence = ?,
+           applied_rule_at = datetime('now'),
+           applied_rule_source = ?,
+           updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    )
+    .run(
+      data.appliedRuleId,
+      data.appliedRuleConfidence,
+      data.appliedRuleSource,
+      workspaceId,
+      rowId
+    );
 }
 
 export function markImportRowDedup(

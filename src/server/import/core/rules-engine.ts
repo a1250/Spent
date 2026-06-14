@@ -6,11 +6,10 @@
  * wins and its classification fields are applied.
  *
  * Confidence starts at 0 and accumulates confidence_boost from every
- * matching rule.  A row reaching >= CONFIDENCE_THRESHOLD is marked
- * 'auto_classified' ONLY when at least one matched rule was user-created
- * (createdFrom === 'user').  Seed/legacy rules accumulate confidence as a
- * suggestion but can never promote a row to 'auto_classified' on their own —
- * those rows stay 'needs_review' regardless of how many seed rules match.
+ * matching rule. A row reaching >= CONFIDENCE_THRESHOLD is marked
+ * 'auto_classified' ONLY when at least one matched rule is explicitly marked
+ * user_approved. Seed/legacy rules accumulate confidence as a suggestion but
+ * can never promote a row to 'auto_classified' on their own.
  *
  * The engine is pure (no DB calls) — callers load the rule list once and
  * pass it in, so bulk imports don't re-query for every row.
@@ -103,8 +102,10 @@ export interface ClassificationResult {
   classificationStatus: ClassificationStatus;
   confidenceScore: number;
   matchedRuleIds: number[];
-  /** True when at least one matched rule was created by a human (createdFrom='user'). */
+  /** True when at least one matched rule is explicitly user-approved. */
   hasUserApprovedRule: boolean;
+  /** Primary user-approved rule, populated only for auto-classified rows. */
+  appliedRuleId: number | null;
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ export function classifyRow(
   let businessUnit: BusinessUnit | null = null;
   let confidence = 0;
   let hasUserApprovedRule = false;
+  let primaryUserApprovedRuleId: number | null = null;
   const matchedRuleIds: number[] = [];
 
   for (const rule of rules) {
@@ -154,8 +156,9 @@ export function classifyRow(
       categoryId = rule.categoryId;
     }
 
-    if (rule.createdFrom === "user") {
+    if (rule.ruleSource === "user_approved") {
       hasUserApprovedRule = true;
+      primaryUserApprovedRuleId ??= rule.id;
     }
 
     confidence = Math.min(1, confidence + rule.confidenceBoost);
@@ -177,6 +180,10 @@ export function classifyRow(
     confidence >= CONFIDENCE_THRESHOLD && hasUserApprovedRule
       ? "auto_classified"
       : "needs_review";
+  const appliedRuleId =
+    classificationStatus === "auto_classified"
+      ? primaryUserApprovedRuleId
+      : null;
 
   return {
     financialNature,
@@ -189,6 +196,7 @@ export function classifyRow(
     confidenceScore: Math.round(confidence * 100) / 100,
     matchedRuleIds,
     hasUserApprovedRule,
+    appliedRuleId,
   };
 }
 

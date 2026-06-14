@@ -189,6 +189,10 @@ export interface ImportRow {
   classificationStatus: ClassificationStatus;
   confidenceScore: number | null;
   aiExplanation: string | null;
+  appliedRuleId: number | null;
+  appliedRuleConfidence: number | null;
+  appliedRuleAt: string | null;
+  appliedRuleSource: RuleSource | null;
   // Dedup
   dedupHash: string | null;
   isDuplicate: boolean;
@@ -568,6 +572,25 @@ export interface ClassificationRule {
   createdFromTransactionId: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RuleEffectiveness {
+  ruleId: number;
+  ruleSource: RuleSource;
+  matchField: RuleMatchField;
+  matchType: RuleMatchType;
+  matchValue: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  financialNature: FinancialNature | null;
+  cashFlowType: CashFlowType | null;
+  pnlImpact: PnlImpact | null;
+  businessUnit: BusinessUnit | null;
+  isActive: boolean;
+  createdAt: string;
+  appliedRows: number;
+  lastAppliedAt: string | null;
+  averageAppliedConfidence: number | null;
 }
 
 export interface TransactionWithCategory extends Transaction {

@@ -26,11 +26,11 @@ PASS=0
 FAIL=0
 
 # ── Expected live DB baseline ────────────────────────────────────────────────
-# Post-Phase-2U.3a baseline; update only after an approved data checkpoint.
-EXPECTED_TOTAL_TRANSACTIONS=949
+# Post-Phase-2U.4 baseline; update only after an approved data checkpoint.
+EXPECTED_TOTAL_TRANSACTIONS=997
 EXPECTED_MANUALLY_APPROVED=663
-EXPECTED_NEEDS_REVIEW=286
-EXPECTED_AUTO_CLASSIFIED=0
+EXPECTED_NEEDS_REVIEW=333
+EXPECTED_AUTO_CLASSIFIED=1
 EXPECTED_USER_RULES=24
 EXPECTED_LEGACY_RULES=611
 

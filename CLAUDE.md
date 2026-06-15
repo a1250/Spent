@@ -90,6 +90,31 @@ fetch('/api/setup/bank', {
 
 To reset state: delete `data/spent.db*` and `data/.encryption-key`.
 
+## QA sandbox (mutation tests)
+
+**Never run PATCH/PUT mutation tests against `data/spent.db` (the live DB).** Use a
+timestamped sandbox copy instead.
+
+```bash
+# 1. Create a sandbox (copies live DB, prints the path)
+SANDBOX=$(./scripts/qa-sandbox.sh)
+
+# 2. Start the app pointing at the sandbox
+SPENT_DATA_DIR=$SANDBOX npm run dev
+
+# 3. (Optional) Guard script - call at the top of any mutation test to fail fast
+#    if SPENT_DATA_DIR is missing or points at the live dir
+./scripts/assert-qa-sandbox.sh || exit 1
+curl -X PATCH http://localhost:3000/api/transactions/1 ...
+
+# 4. Clean up when done
+rm -rf data/tmp/qa-*
+```
+
+The `SPENT_DATA_DIR` env var is read by `src/server/db/index.ts`. If unset, the app
+falls back to `<repo>/data/` (the live DB). The `data/tmp/` directory is covered by
+`.gitignore` via the `/data/` rule.
+
 ## Known quirks
 
 - The `israeli-bank-scrapers` library uses Puppeteer with hardcoded Asia/Jerusalem timezone.

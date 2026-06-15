@@ -25,6 +25,15 @@ SANDBOX=""
 PASS=0
 FAIL=0
 
+# ── Expected live DB baseline ────────────────────────────────────────────────
+# Post-Phase-2T.1 baseline; update only after an approved data checkpoint.
+EXPECTED_TOTAL_TRANSACTIONS=947
+EXPECTED_MANUALLY_APPROVED=648
+EXPECTED_NEEDS_REVIEW=299
+EXPECTED_AUTO_CLASSIFIED=0
+EXPECTED_USER_RULES=24
+EXPECTED_LEGACY_RULES=611
+
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -479,12 +488,12 @@ LIVE_AUTO_AFTER=$(live     "SELECT COUNT(*) FROM transactions WHERE classificati
 LIVE_USER_RULES_AFTER=$(live   "SELECT COUNT(*) FROM classification_rules WHERE rule_source='user_approved' AND is_active=1;")
 LIVE_LEGACY_RULES_AFTER=$(live "SELECT COUNT(*) FROM classification_rules WHERE rule_source='legacy_index'  AND is_active=1;")
 
-count_check "total transactions"  "$LIVE_TOTAL_BEFORE"        "$LIVE_TOTAL_AFTER"        947
-count_check "manually_approved"   "$LIVE_APPROVED_BEFORE"     "$LIVE_APPROVED_AFTER"     166
-count_check "needs_review"        "$LIVE_REVIEW_BEFORE"       "$LIVE_REVIEW_AFTER"       781
-count_check "auto_classified"     "$LIVE_AUTO_BEFORE"         "$LIVE_AUTO_AFTER"         0
-count_check "user_approved rules" "$LIVE_USER_RULES_BEFORE"   "$LIVE_USER_RULES_AFTER"   24
-count_check "legacy_index rules"  "$LIVE_LEGACY_RULES_BEFORE" "$LIVE_LEGACY_RULES_AFTER" 611
+count_check "total transactions"  "$LIVE_TOTAL_BEFORE"        "$LIVE_TOTAL_AFTER"        "$EXPECTED_TOTAL_TRANSACTIONS"
+count_check "manually_approved"   "$LIVE_APPROVED_BEFORE"     "$LIVE_APPROVED_AFTER"     "$EXPECTED_MANUALLY_APPROVED"
+count_check "needs_review"        "$LIVE_REVIEW_BEFORE"       "$LIVE_REVIEW_AFTER"       "$EXPECTED_NEEDS_REVIEW"
+count_check "auto_classified"     "$LIVE_AUTO_BEFORE"         "$LIVE_AUTO_AFTER"         "$EXPECTED_AUTO_CLASSIFIED"
+count_check "user_approved rules" "$LIVE_USER_RULES_BEFORE"   "$LIVE_USER_RULES_AFTER"   "$EXPECTED_USER_RULES"
+count_check "legacy_index rules"  "$LIVE_LEGACY_RULES_BEFORE" "$LIVE_LEGACY_RULES_AFTER" "$EXPECTED_LEGACY_RULES"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary

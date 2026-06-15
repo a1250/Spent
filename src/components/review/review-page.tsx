@@ -1,21 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertCircle,
+  ArrowUpDown,
   ArrowUpRight,
   Ban,
+  BarChart3,
   Clock,
   Copy,
   ListChecks,
   PlusCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionLearningDialog } from "@/components/transactions/transaction-learning-dialog";
 import { CoverageBanner } from "./coverage-banner";
+import { ReviewFilterBar, EMPTY_FILTERS } from "./review-filter-bar";
+import {
+  ReviewCounterpartyGroups,
+  buildCounterpartyGroups,
+} from "./review-counterparty-groups";
+import type { ReviewFilters } from "./review-filter-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +47,9 @@ import type {
   ImportRowActionItem,
   NeedsReviewTransaction,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const HIGH_VALUE_THRESHOLD = 5000;
 
 const moneyFormatter = new Intl.NumberFormat("he-IL", {
   style: "currency",
@@ -45,10 +57,119 @@ const moneyFormatter = new Intl.NumberFormat("he-IL", {
   minimumFractionDigits: 2,
 });
 
+type SortField = "amount" | "date" | "counterparty" | "pending";
+type ViewMode = "list" | "groups";
+
+function applyFiltersAndSort(
+  rows: NeedsReviewTransaction[],
+  filters: ReviewFilters,
+  sortField: SortField,
+  sortOrder: "asc" | "desc"
+): NeedsReviewTransaction[] {
+  // Compute repeated counterparties for the toggle (from the full unfiltered set)
+  const repeatedKeys = new Set<string>();
+  if (filters.repeatedOnly) {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const k = (r.counterparty ?? r.cleanDescription ?? r.description ?? "")
+        .toLowerCase()
+        .trim();
+      if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    for (const [k, n] of counts) {
+      if (n > 1) repeatedKeys.add(k);
+    }
+  }
+
+  let result = rows.filter((r) => {
+    if (filters.search) {
+      const term = filters.search.toLowerCase();
+      if (
+        !r.description?.toLowerCase().includes(term) &&
+        !r.cleanDescription?.toLowerCase().includes(term) &&
+        !r.counterparty?.toLowerCase().includes(term)
+      )
+        return false;
+    }
+
+    if (filters.auditSearch) {
+      const term = filters.auditSearch.toLowerCase();
+      if (
+        !r.sourceCategory?.toLowerCase().includes(term) &&
+        !r.legacyCategory?.toLowerCase().includes(term)
+      )
+        return false;
+    }
+
+    if (filters.batchId && r.importBatchId !== Number(filters.batchId))
+      return false;
+    if (filters.adapterKey && r.adapterKey !== filters.adapterKey) return false;
+    if (filters.businessUnit && r.businessUnit !== filters.businessUnit)
+      return false;
+    if (
+      filters.financialNature &&
+      r.financialNature !== filters.financialNature
+    )
+      return false;
+    if (filters.cashFlowType && r.cashFlowType !== filters.cashFlowType)
+      return false;
+
+    const absAmt = Math.abs(r.chargedAmount);
+    if (filters.amountMin && absAmt < Number(filters.amountMin)) return false;
+    if (filters.amountMax && absAmt > Number(filters.amountMax)) return false;
+    if (filters.dateFrom && r.date < filters.dateFrom) return false;
+    if (filters.dateTo && r.date > filters.dateTo) return false;
+    if (filters.highValueOnly && absAmt < HIGH_VALUE_THRESHOLD) return false;
+
+    if (filters.repeatedOnly) {
+      const k = (r.counterparty ?? r.cleanDescription ?? r.description ?? "")
+        .toLowerCase()
+        .trim();
+      if (!repeatedKeys.has(k)) return false;
+    }
+
+    return true;
+  });
+
+  // Sort
+  result = [...result].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === "amount")
+      cmp = Math.abs(b.chargedAmount) - Math.abs(a.chargedAmount);
+    else if (sortField === "date") cmp = a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    else if (sortField === "counterparty")
+      cmp = (a.counterparty ?? a.description ?? "").localeCompare(
+        b.counterparty ?? b.description ?? "",
+        "he"
+      );
+    else if (sortField === "pending") cmp = b.daysPending - a.daysPending;
+
+    return sortOrder === "asc" ? -cmp : cmp;
+  });
+
+  return result;
+}
+
 export function ReviewPage() {
   const queryClient = useQueryClient();
   const [editingTransaction, setEditingTransaction] =
     useState<NeedsReviewTransaction | null>(null);
+
+  const [filters, setFilters] = useState<ReviewFilters>(() => {
+    if (typeof window === "undefined") return EMPTY_FILTERS;
+    const p = new URLSearchParams(window.location.search);
+    const updates: Partial<ReviewFilters> = {};
+    const batch = p.get("batch");
+    if (batch) updates.batchId = batch;
+    const counterparty = p.get("counterparty");
+    if (counterparty) updates.search = counterparty;
+    const sourceType = p.get("source_type");
+    if (sourceType) updates.adapterKey = sourceType.replace(/_/g, "-");
+    return { ...EMPTY_FILTERS, ...updates };
+  });
+  const [sortField, setSortField] = useState<SortField>("amount");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const summaryQuery = useQuery({
     queryKey: ["review-summary"],
@@ -67,6 +188,32 @@ export function ReviewPage() {
     queryFn: () => getCategories(),
   });
 
+  const allRows = useMemo(
+    () => transactionsQuery.data ?? [],
+    [transactionsQuery.data]
+  );
+
+  const filteredRows = useMemo(
+    () => applyFiltersAndSort(allRows, filters, sortField, sortOrder),
+    [allRows, filters, sortField, sortOrder]
+  );
+
+  const counterpartyGroups = useMemo(
+    () => buildCounterpartyGroups(allRows),
+    [allRows]
+  );
+
+  const highlightedKey = editingTransaction
+    ? (
+        editingTransaction.counterparty ??
+        editingTransaction.cleanDescription ??
+        editingTransaction.description ??
+        ""
+      )
+        .toLowerCase()
+        .trim()
+    : null;
+
   const refreshQualityData = () => {
     void queryClient.invalidateQueries({ queryKey: ["review-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["review-transactions"] });
@@ -77,13 +224,29 @@ export function ReviewPage() {
     void queryClient.invalidateQueries({ queryKey: ["home"] });
   };
 
+  function handleFilterByCounterparty(name: string) {
+    setFilters((f) => ({ ...f, search: name }));
+    setViewMode("list");
+  }
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("desc");
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Needs Review"
         meta={
           summaryQuery.data
-            ? `${summaryQuery.data.needsReviewTransactions.toLocaleString("he-IL")} תנועות`
+            ? `${summaryQuery.data.needsReviewTransactions.toLocaleString(
+                "he-IL"
+              )} תנועות`
             : undefined
         }
       />
@@ -93,6 +256,24 @@ export function ReviewPage() {
           <CoverageBanner summary={summaryQuery.data} />
         )}
 
+        {/* Data quality quick links */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">קישורים מהירים:</span>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 px-3 text-xs" render={<Link href="/reports/data-quality" />}>
+            <BarChart3 className="h-3.5 w-3.5" />
+            Data Quality
+          </Button>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 px-3 text-xs" render={<Link href="/reports/rules" />}>
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Rules Report
+          </Button>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 px-3 text-xs" render={<Link href="/import" />}>
+            <ArrowUpRight className="h-3.5 w-3.5" />
+            Import
+          </Button>
+        </div>
+
+        {/* Transactions section */}
         <section className="space-y-3">
           <SectionHeading
             icon={ListChecks}
@@ -100,13 +281,92 @@ export function ReviewPage() {
             description="ממוינות לפי הערך המוחלט הגבוה ביותר. שמירת כלל עתידי נשארת בחירה מפורשת בדיאלוג."
             count={transactionsQuery.data?.length}
           />
-          <TransactionsReviewTable
-            rows={transactionsQuery.data ?? []}
-            loading={transactionsQuery.isLoading}
-            onClassify={setEditingTransaction}
+
+          {/* Filter bar */}
+          <ReviewFilterBar
+            filters={filters}
+            onChange={setFilters}
+            allRows={allRows}
+            totalCount={allRows.length}
+            filteredCount={filteredRows.length}
           />
+
+          {/* View / sort controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+              <ViewTab
+                active={viewMode === "list"}
+                onClick={() => setViewMode("list")}
+              >
+                רשימה
+              </ViewTab>
+              <ViewTab
+                active={viewMode === "groups"}
+                onClick={() => setViewMode("groups")}
+              >
+                קיבוץ לפי צד נגדי
+                {counterpartyGroups.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ms-1.5 h-4 px-1 text-[10px]"
+                  >
+                    {counterpartyGroups.length}
+                  </Badge>
+                )}
+              </ViewTab>
+            </div>
+
+            {viewMode === "list" && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>מיון:</span>
+                <SortButton
+                  active={sortField === "amount"}
+                  order={sortOrder}
+                  onClick={() => toggleSort("amount")}
+                >
+                  סכום
+                </SortButton>
+                <SortButton
+                  active={sortField === "date"}
+                  order={sortOrder}
+                  onClick={() => toggleSort("date")}
+                >
+                  תאריך
+                </SortButton>
+                <SortButton
+                  active={sortField === "counterparty"}
+                  order={sortOrder}
+                  onClick={() => toggleSort("counterparty")}
+                >
+                  צד נגדי
+                </SortButton>
+                <SortButton
+                  active={sortField === "pending"}
+                  order={sortOrder}
+                  onClick={() => toggleSort("pending")}
+                >
+                  ימי המתנה
+                </SortButton>
+              </div>
+            )}
+          </div>
+
+          {viewMode === "list" ? (
+            <TransactionsReviewTable
+              rows={filteredRows}
+              loading={transactionsQuery.isLoading}
+              onClassify={setEditingTransaction}
+              highlightedKey={highlightedKey}
+            />
+          ) : (
+            <ReviewCounterpartyGroups
+              groups={counterpartyGroups}
+              onFilterByCounterparty={handleFilterByCounterparty}
+            />
+          )}
         </section>
 
+        {/* Import rows needing action */}
         <section className="space-y-3">
           <SectionHeading
             icon={AlertCircle}
@@ -132,6 +392,66 @@ export function ReviewPage() {
         />
       )}
     </>
+  );
+}
+
+// ── Small shared UI primitives ────────────────────────────────────────────────
+
+function ViewTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SortButton({
+  active,
+  order,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  order: "asc" | "desc";
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted",
+        active ? "bg-muted font-semibold text-foreground" : "text-muted-foreground"
+      )}
+    >
+      {children}
+      {active && (
+        <ArrowUpDown
+          className={cn(
+            "h-3 w-3 transition-transform",
+            order === "asc" && "rotate-180"
+          )}
+        />
+      )}
+    </button>
   );
 }
 
@@ -162,20 +482,24 @@ function SectionHeading({
   );
 }
 
+// ── Transactions review table ─────────────────────────────────────────────────
+
 function TransactionsReviewTable({
   rows,
   loading,
   onClassify,
+  highlightedKey,
 }: {
   rows: NeedsReviewTransaction[];
   loading: boolean;
   onClassify: (row: NeedsReviewTransaction) => void;
+  highlightedKey: string | null;
 }) {
   if (loading) {
     return <TableState>טוען תנועות לבדיקה...</TableState>;
   }
   if (rows.length === 0) {
-    return <TableState>אין תנועות שממתינות לסיווג.</TableState>;
+    return <TableState>אין תנועות שמתאימות לסינון הנוכחי.</TableState>;
   }
 
   return (
@@ -197,97 +521,128 @@ function TransactionsReviewTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20">
-              <td className="px-3 py-2 font-mono text-xs">
-                <div>tx #{row.id}</div>
-                {row.importRowId != null && (
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    import row #{row.importRowId}
-                  </div>
+          {rows.map((row) => {
+            const rowKey = (
+              row.counterparty ??
+              row.cleanDescription ??
+              row.description ??
+              ""
+            )
+              .toLowerCase()
+              .trim();
+            const isSimilar =
+              highlightedKey != null &&
+              highlightedKey !== "" &&
+              rowKey === highlightedKey;
+
+            return (
+              <tr
+                key={row.id}
+                className={cn(
+                  "border-b last:border-0 hover:bg-muted/20",
+                  isSimilar && "bg-primary/5 ring-1 ring-inset ring-primary/20"
                 )}
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
-                {row.date}
-              </td>
-              <td className="max-w-[300px] px-3 py-2">
-                <div className="truncate font-medium" title={row.description}>
-                  {row.cleanDescription ?? row.description}
-                </div>
-                {row.counterparty && (
-                  <div className="truncate text-xs text-muted-foreground">
-                    {row.counterparty}
-                  </div>
-                )}
-              </td>
-              <td
-                className={`whitespace-nowrap px-3 py-2 text-end font-mono font-medium tabular-nums ${
-                  row.chargedAmount > 0
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : ""
-                }`}
               >
-                {moneyFormatter.format(row.chargedAmount)}
-              </td>
-              <td className="px-3 py-2">
-                <ClassificationStatusBadge status={row.classificationStatus} />
-              </td>
-              <td className="max-w-[220px] px-3 py-2">
-                <div className="flex items-center gap-1.5">
-                  {row.categoryName && (
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: row.categoryColor ?? "#94a3b8" }}
-                    />
+                <td className="px-3 py-2 font-mono text-xs">
+                  <div>tx #{row.id}</div>
+                  {row.importRowId != null && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      import row #{row.importRowId}
+                    </div>
                   )}
-                  <span className="truncate font-medium">
-                    {row.categoryName ?? "ללא קטגוריה"}
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  יחידה: {row.businessUnit ?? "unknown"}
-                </div>
-              </td>
-              <td className="max-w-[240px] px-3 py-2">
-                <SourceContext
-                  batchId={row.importBatchId}
-                  sourceFilename={row.sourceFilename}
-                  adapterKey={row.adapterKey}
-                  sourceType={row.sourceType}
-                  sourceSection={row.sourceSection}
-                  sourceSheetName={row.sourceSheetName}
-                  importStatus={row.importStatus}
-                />
-              </td>
-              <td className="max-w-[220px] px-3 py-2">
-                <AuditCategoryContext
-                  sourceCategory={row.sourceCategory}
-                  legacyCategory={row.legacyCategory}
-                />
-              </td>
-              <td className="px-3 py-2">
-                <RuleProvenanceBadge
-                  ruleId={row.appliedRuleId}
-                  source={row.appliedRuleSource}
-                  confidence={row.appliedRuleConfidence}
-                  legacyRuleCategory={row.legacyRuleCategory}
-                />
-              </td>
-              <td className="px-3 py-2 text-center text-xs tabular-nums text-muted-foreground">
-                {row.daysPending} ימים
-              </td>
-              <td className="px-3 py-2">
-                <Button size="sm" onClick={() => onClassify(row)}>
-                  סיווג
-                </Button>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                  {row.date}
+                </td>
+                <td className="max-w-[300px] px-3 py-2">
+                  <div className="truncate font-medium" title={row.description}>
+                    {row.cleanDescription ?? row.description}
+                  </div>
+                  {row.counterparty && (
+                    <div className="truncate text-xs text-muted-foreground">
+                      {row.counterparty}
+                    </div>
+                  )}
+                  {isSimilar && (
+                    <div className="mt-0.5 text-[10px] font-medium text-primary">
+                      תנועה דומה
+                    </div>
+                  )}
+                </td>
+                <td
+                  className={cn(
+                    "whitespace-nowrap px-3 py-2 text-end font-mono font-medium tabular-nums",
+                    row.chargedAmount > 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : ""
+                  )}
+                >
+                  {moneyFormatter.format(row.chargedAmount)}
+                </td>
+                <td className="px-3 py-2">
+                  <ClassificationStatusBadge status={row.classificationStatus} />
+                </td>
+                <td className="max-w-[220px] px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    {row.categoryName && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: row.categoryColor ?? "#94a3b8",
+                        }}
+                      />
+                    )}
+                    <span className="truncate font-medium">
+                      {row.categoryName ?? "ללא קטגוריה"}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    יחידה: {row.businessUnit ?? "unknown"}
+                  </div>
+                </td>
+                <td className="max-w-[240px] px-3 py-2">
+                  <SourceContext
+                    batchId={row.importBatchId}
+                    sourceFilename={row.sourceFilename}
+                    adapterKey={row.adapterKey}
+                    sourceType={row.sourceType}
+                    sourceSection={row.sourceSection}
+                    sourceSheetName={row.sourceSheetName}
+                    importStatus={row.importStatus}
+                  />
+                </td>
+                <td className="max-w-[220px] px-3 py-2">
+                  <AuditCategoryContext
+                    sourceCategory={row.sourceCategory}
+                    legacyCategory={row.legacyCategory}
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <RuleProvenanceBadge
+                    ruleId={row.appliedRuleId}
+                    source={row.appliedRuleSource}
+                    confidence={row.appliedRuleConfidence}
+                    legacyRuleCategory={row.legacyRuleCategory}
+                  />
+                </td>
+                <td className="px-3 py-2 text-center text-xs tabular-nums text-muted-foreground">
+                  {row.daysPending} ימים
+                </td>
+                <td className="px-3 py-2">
+                  <Button size="sm" onClick={() => onClassify(row)}>
+                    סיווג
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
+
+// ── Import rows action table ───────────────────────────────────────────────────
 
 function ImportRowsActionTable({
   rows,
@@ -350,7 +705,10 @@ function ImportRowsActionTable({
             const busy =
               mutation.isPending && mutation.variables?.row.id === row.id;
             return (
-              <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20">
+              <tr
+                key={row.id}
+                className="border-b last:border-0 hover:bg-muted/20"
+              >
                 <td className="px-3 py-2 font-mono text-xs">
                   #{row.id}
                   <div className="text-[10px] text-muted-foreground">
@@ -382,12 +740,17 @@ function ImportRowsActionTable({
                   )}
                 </td>
                 <td className="max-w-[260px] px-3 py-2">
-                  <div className="truncate" title={row.description ?? undefined}>
+                  <div
+                    className="truncate"
+                    title={row.description ?? undefined}
+                  >
                     {row.counterparty ?? row.description ?? "—"}
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-end font-mono tabular-nums">
-                  {row.amount == null ? "—" : moneyFormatter.format(row.amount)}
+                  {row.amount == null
+                    ? "—"
+                    : moneyFormatter.format(row.amount)}
                 </td>
                 <td className="max-w-[260px] px-3 py-2">
                   <div className="flex flex-wrap gap-1.5">
@@ -504,6 +867,8 @@ function ImportRowsActionTable({
   );
 }
 
+// ── Shared sub-components ────────────────────────────────────────────────────
+
 function SourceContext({
   batchId,
   sourceFilename,
@@ -565,14 +930,12 @@ function AuditCategoryContext({
     <div className="space-y-1 text-xs">
       {sourceCategory && (
         <div className="truncate" title={sourceCategory}>
-          <span className="text-muted-foreground">source:</span>{" "}
-          {sourceCategory}
+          <span className="text-muted-foreground">source:</span> {sourceCategory}
         </div>
       )}
       {legacyCategory && legacyCategory !== sourceCategory && (
         <div className="truncate" title={legacyCategory}>
-          <span className="text-muted-foreground">legacy:</span>{" "}
-          {legacyCategory}
+          <span className="text-muted-foreground">legacy:</span> {legacyCategory}
         </div>
       )}
       <div className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">

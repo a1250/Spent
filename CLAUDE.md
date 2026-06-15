@@ -115,6 +115,20 @@ The `SPENT_DATA_DIR` env var is read by `src/server/db/index.ts`. If unset, the 
 falls back to `<repo>/data/` (the live DB). The `data/tmp/` directory is covered by
 `.gitignore` via the `/data/` rule.
 
+## Learning policy regression tests
+
+```bash
+# Requires a prior production build (npm run build).
+# The script starts a second app instance on port 3777 via next start.
+./scripts/qa-learning-policy.sh
+```
+
+Tests cover all 10 policy cases from Phase 2P:
+keep_review, batch_similar, saveAsRule, approval validation, businessUnit=other,
+risky rule acknowledgement, source_category isolation, legacy approve paths blocked,
+and batch_similar scope. Runs entirely against a sandbox copy of the DB.
+**Never mutates data/spent.db.**
+
 ## Known quirks
 
 - The `israeli-bank-scrapers` library uses Puppeteer with hardcoded Asia/Jerusalem timezone.

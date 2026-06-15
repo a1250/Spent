@@ -30,6 +30,7 @@ import type {
   MonthlyCashFlowPreview,
   BusinessUnitDashboard,
   RuleEffectivenessReport,
+  DataQualityDashboard,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -920,4 +921,8 @@ export function getBusinessUnitDashboard() {
 
 export function getRuleEffectivenessReport() {
   return fetchJSON<RuleEffectivenessReport>("/api/reports/rules");
+}
+
+export function getDataQualityDashboard() {
+  return fetchJSON<DataQualityDashboard>("/api/reports/data-quality");
 }

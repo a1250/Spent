@@ -9,6 +9,7 @@ import {
   ChartNoAxesCombined,
   FileChartColumn,
   ListChecks,
+  ScanSearch,
   ShieldCheck,
   Upload,
 } from "lucide-react";
@@ -16,7 +17,7 @@ import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import {
   getBusinessUnitDashboard,
-  getDataQualitySummary,
+  getDataQualityDashboard,
   getImportHealth,
   getMonthlyCashFlowPreview,
   getRuleEffectivenessReport,
@@ -41,9 +42,9 @@ export function ReportsHubPage() {
     queryKey: ["monthly-cash-flow-preview", { mode: "business" }],
     queryFn: () => getMonthlyCashFlowPreview({ mode: "business" }),
   });
-  const qualityQuery = useQuery({
-    queryKey: ["review-summary"],
-    queryFn: getDataQualitySummary,
+  const dataQualityQuery = useQuery({
+    queryKey: ["data-quality-dashboard"],
+    queryFn: getDataQualityDashboard,
   });
   const importHealthQuery = useQuery({
     queryKey: ["import-health"],
@@ -55,7 +56,7 @@ export function ReportsHubPage() {
   });
 
   const dashboard = dashboardQuery.data;
-  const quality = qualityQuery.data;
+  const quality = dataQualityQuery.data?.summary;
   const latestBatch = importHealthQuery.data?.[0];
   const unknownUnit = dashboard?.units.find(
     (unit) => unit.slug === "unknown"
@@ -204,6 +205,27 @@ export function ReportsHubPage() {
           />
 
           <ReportCard
+            href="/reports/data-quality"
+            eyebrow="Cleanup planning"
+            title="Business Data Quality"
+            description="Find high-value review gaps, repeated counterparties, uncertain P&L, and rule candidates."
+            icon={ScanSearch}
+            accent="rose"
+            metric={
+              quality
+                ? integer.format(quality.needsReviewTransactions)
+                : "Loading..."
+            }
+            metricLabel="Transactions needing review"
+            note={
+              quality
+                ? `${integer.format(quality.unknownBusinessUnitCount)} unknown unit · ${integer.format(quality.uncertainPnlCount)} uncertain P&L`
+                : "Quality signals loading"
+            }
+            warning="Suggestions are read-only and require explicit approval."
+          />
+
+          <ReportCard
             href="/review"
             eyebrow="Classification workflow"
             title="Needs Review Queue"
@@ -349,6 +371,10 @@ const ACCENTS = {
   violet: {
     icon: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
     line: "bg-violet-500",
+  },
+  rose: {
+    icon: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    line: "bg-rose-500",
   },
 };
 

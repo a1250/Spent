@@ -249,6 +249,98 @@ export interface DataQualitySummary {
   lowCoverage: boolean;
 }
 
+export type DataQualityRecommendedAction =
+  | "classify_manually"
+  | "create_rule_candidate"
+  | "keep_review"
+  | "needs_user_context";
+
+export interface DataQualityExample {
+  id: number;
+  date: string;
+  description: string;
+  counterparty: string | null;
+  amount: number;
+  sourceCategory: string | null;
+  legacyCategory: string | null;
+}
+
+export interface NeedsReviewSourceBreakdown {
+  sourceType: string;
+  adapterKey: string | null;
+  sourceSheetName: string | null;
+  importBatchId: number | null;
+  sourceFilename: string | null;
+  count: number;
+  absoluteValue: number;
+  largestAmount: number;
+  examples: DataQualityExample[];
+}
+
+export interface UnknownBusinessUnitGroup {
+  categoryName: string | null;
+  financialNature: FinancialNature;
+  counterparty: string;
+  count: number;
+  amountSum: number;
+  absoluteValue: number;
+  examples: DataQualityExample[];
+}
+
+export interface UncertainPnlGroup {
+  financialNature: FinancialNature;
+  categoryName: string | null;
+  businessUnit: string;
+  count: number;
+  amountSum: number;
+  absoluteValue: number;
+  examples: DataQualityExample[];
+}
+
+export interface RepeatedUnclassifiedPattern {
+  normalizedCounterparty: string;
+  count: number;
+  absoluteValue: number;
+  largestAmount: number;
+  exampleDates: string[];
+  exampleAmounts: number[];
+  sourceCategories: string[];
+  legacyCategories: string[];
+  recommendedAction: DataQualityRecommendedAction;
+  recommendationReason: string;
+}
+
+export type DataQualitySprintBucketKind =
+  | "high_count_low_ambiguity"
+  | "high_value_needs_context"
+  | "possible_rule_candidates"
+  | "should_remain_manual";
+
+export interface DataQualitySprintBucket {
+  kind: DataQualitySprintBucketKind;
+  title: string;
+  description: string;
+  transactionCount: number;
+  absoluteValue: number;
+  patterns: string[];
+}
+
+export interface DataQualityDashboard {
+  summary: DataQualitySummary & {
+    userApprovedRules: number;
+    legacyRules: number;
+    unknownBusinessUnitCount: number;
+    uncertainPnlCount: number;
+    missingCategoryCount: number;
+    incompleteFinancialFieldsCount: number;
+  };
+  needsReviewBySource: NeedsReviewSourceBreakdown[];
+  unknownBusinessUnits: UnknownBusinessUnitGroup[];
+  uncertainPnl: UncertainPnlGroup[];
+  repeatedUnclassified: RepeatedUnclassifiedPattern[];
+  suggestedSprintBuckets: DataQualitySprintBucket[];
+}
+
 export interface NeedsReviewTransaction extends TransactionWithCategory {
   legacyCategory: string | null;
   legacyRuleCategory: string | null;

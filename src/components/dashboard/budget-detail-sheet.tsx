@@ -28,7 +28,6 @@ import {
 import {
   Plus,
   HelpCircle,
-  Check,
   ChevronDown,
   Pencil,
   type LucideIcon,
@@ -53,18 +52,17 @@ import {
   Briefcase,
 } from "lucide-react";
 import {
-  approveTransactionCategory,
   getCategories,
   getCategoryDetail,
   updateBudget,
   updateCategoryBudgetMode,
-  updateTransactionCategory,
   type CategoryDetail,
 } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { Switch } from "@/components/ui/switch";
 import type { Category, TransactionWithCategory } from "@/lib/types";
 import type { CategoryChildBreakdown } from "@/lib/api";
+import { TransactionLearningDialog } from "@/components/transactions/transaction-learning-dialog";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   "shopping-basket": ShoppingBasket,
@@ -141,6 +139,10 @@ function DetailSkeleton() {
 
 function DetailContent({ data }: { data: CategoryDetail }) {
   const queryClient = useQueryClient();
+  const [learningEdit, setLearningEdit] = useState<{
+    transaction: TransactionWithCategory;
+    initialCategoryId: number | null;
+  } | null>(null);
   const sameKindCategoriesQuery = useQuery({
     queryKey: ["categories", data.category.kind],
     queryFn: () => getCategories(data.category.kind),
@@ -153,13 +155,14 @@ function DetailContent({ data }: { data: CategoryDetail }) {
     queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
   };
 
-  const handleApprove = async (id: number) => {
-    await approveTransactionCategory(id);
-    invalidate();
-  };
-  const handleChangeCategory = async (id: number, categoryId: number) => {
-    await updateTransactionCategory(id, categoryId);
-    invalidate();
+  const handleClassify = (
+    transaction: TransactionWithCategory,
+    categoryId: number | null
+  ) => {
+    setLearningEdit({
+      transaction,
+      initialCategoryId: categoryId,
+    });
   };
 
   const handleToggleMode = async (checked: boolean) => {
@@ -274,7 +277,7 @@ function DetailContent({ data }: { data: CategoryDetail }) {
       <div className="space-y-5 p-6 pt-3">
         {data.category.isParent && data.children && data.children.length > 0 && (
           <ChildrenBreakdownSection
-            children={data.children}
+            items={data.children}
             budgetSource={data.budgetSource}
             color={data.category.color}
           />
@@ -283,8 +286,7 @@ function DetailContent({ data }: { data: CategoryDetail }) {
           <NeedsReviewSection
             transactions={data.needsReviewTransactions}
             categories={sameKindCategoriesQuery.data ?? []}
-            onApprove={handleApprove}
-            onChange={handleChangeCategory}
+            onClassify={handleClassify}
             color={data.category.color}
           />
         )}
@@ -431,7 +433,7 @@ function DetailContent({ data }: { data: CategoryDetail }) {
                         {(sameKindCategoriesQuery.data ?? []).map((cat) => (
                           <DropdownMenuItem
                             key={cat.id}
-                            onClick={() => handleChangeCategory(t.id, cat.id)}
+                            onClick={() => handleClassify(t, cat.id)}
                           >
                             <div
                               className="me-2 h-2 w-2 rounded-full"
@@ -452,16 +454,26 @@ function DetailContent({ data }: { data: CategoryDetail }) {
           </div>
         </div>
       </div>
+      {learningEdit && (
+        <TransactionLearningDialog
+          key={`${learningEdit.transaction.id}-${learningEdit.initialCategoryId ?? "none"}`}
+          transaction={learningEdit.transaction}
+          initialCategoryId={learningEdit.initialCategoryId}
+          categories={sameKindCategoriesQuery.data ?? []}
+          onClose={() => setLearningEdit(null)}
+          onSaved={invalidate}
+        />
+      )}
     </div>
   );
 }
 
 function ChildrenBreakdownSection({
-  children,
+  items,
   budgetSource,
   color,
 }: {
-  children: CategoryChildBreakdown[];
+  items: CategoryChildBreakdown[];
   budgetSource: "own" | "rollup" | "leaf";
   color: string;
 }) {
@@ -476,7 +488,7 @@ function ChildrenBreakdownSection({
     >
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-medium">
-          Sub-categories · {children.length}
+          Sub-categories · {items.length}
         </h3>
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
           {budgetSource === "own" ? "Own budget" : "Rolled up"}
@@ -484,7 +496,7 @@ function ChildrenBreakdownSection({
       </div>
       <p className="text-xs text-muted-foreground">{banner}</p>
       <ul className="space-y-1.5">
-        {children.map((c) => {
+        {items.map((c) => {
           const pct = Math.min(100, Math.round(c.percentSpent));
           return (
             <li
@@ -532,14 +544,15 @@ function ChildrenBreakdownSection({
 function NeedsReviewSection({
   transactions,
   categories,
-  onApprove,
-  onChange,
+  onClassify,
   color,
 }: {
   transactions: TransactionWithCategory[];
   categories: Category[];
-  onApprove: (id: number) => void;
-  onChange: (id: number, categoryId: number) => void;
+  onClassify: (
+    transaction: TransactionWithCategory,
+    categoryId: number | null
+  ) => void;
   color: string;
 }) {
   return (
@@ -557,8 +570,8 @@ function NeedsReviewSection({
         </h3>
       </div>
       <p className="text-xs text-muted-foreground">
-        The AI wasn&apos;t sure about these. Approve to keep, or pick a different
-        category. Either way, the choice is remembered for next time.
+        Review the full financial classification before approval. Future rules
+        are always opt-in.
       </p>
       <ul className="mt-2 space-y-2">
         {transactions.map((t) => (
@@ -594,7 +607,7 @@ function NeedsReviewSection({
                   {categories.map((cat) => (
                     <DropdownMenuItem
                       key={cat.id}
-                      onClick={() => onChange(t.id, cat.id)}
+                      onClick={() => onClassify(t, cat.id)}
                     >
                       <div
                         className="me-2 h-2 w-2 rounded-full"
@@ -608,10 +621,10 @@ function NeedsReviewSection({
               <Button
                 size="sm"
                 className="h-7 gap-1 px-2 text-xs"
-                onClick={() => onApprove(t.id)}
+                onClick={() => onClassify(t, t.categoryId)}
               >
-                <Check className="h-3.5 w-3.5" />
-                Approve
+                <Pencil className="h-3.5 w-3.5" />
+                Review
               </Button>
             </div>
           </li>
@@ -780,4 +793,3 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
     b: parseInt(clean.slice(4, 6), 16),
   };
 }
-

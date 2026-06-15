@@ -46,6 +46,11 @@ import {
   type ImportUploadResult,
   type ImportRowPatch,
 } from "@/lib/api";
+import {
+  getRiskyRuleReasons,
+  resolveLearningRulePreview,
+  validateManualApproval,
+} from "@/lib/classification-learning-policy";
 import type {
   ImportBatch,
   ImportRow,
@@ -54,6 +59,7 @@ import type {
   PnlImpact,
   BusinessUnit,
   LearningApplyScope,
+  LearningDecision,
   LearningRuleMatchType,
 } from "@/lib/types";
 import { ImportHealthReport } from "@/components/import/import-health-report";
@@ -134,12 +140,49 @@ function EditRowDialog({
     useState<LearningApplyScope>("row");
   const [saveAsRule, setSaveAsRule] = useState(false);
   const [ruleMatchType, setRuleMatchType] =
-    useState<LearningRuleMatchType>(
-      row.counterparty?.trim()
-        ? "merchant_contains"
-        : "description_contains"
-    );
+    useState<LearningRuleMatchType | "">("");
+  const [riskyRuleAcknowledged, setRiskyRuleAcknowledged] =
+    useState(false);
+  const [otherBusinessConfirmed, setOtherBusinessConfirmed] =
+    useState(false);
   const needsMatcher = applyScope === "batch_similar" || saveAsRule;
+  const correction = {
+    categoryId: categoryId === "none" ? null : Number(categoryId),
+    financialNature,
+    cashFlowType,
+    pnlImpact,
+    businessUnit: businessUnit === "none" ? null : businessUnit,
+  };
+  const rulePreview = useMemo(() => {
+    if (!needsMatcher || !ruleMatchType) return null;
+    try {
+      return resolveLearningRulePreview(
+        {
+          counterparty: row.counterparty,
+          description: row.cleanDescription ?? row.rawDescription,
+          sourceCategory: row.sourceCategory,
+        },
+        ruleMatchType
+      );
+    } catch {
+      return null;
+    }
+  }, [
+    needsMatcher,
+    row.cleanDescription,
+    row.counterparty,
+    row.rawDescription,
+    row.sourceCategory,
+    ruleMatchType,
+  ]);
+  const riskyRuleReasons =
+    saveAsRule && ruleMatchType && rulePreview
+      ? getRiskyRuleReasons({
+          matchType: ruleMatchType,
+          matchValue: rulePreview.value,
+          correction,
+        })
+      : [];
   const categoryKind = row.direction === "income" ? "income" : "expense";
   const { data: allCategories = [] } = useQuery({
     queryKey: ["categories", categoryKind],
@@ -174,18 +217,51 @@ function EditRowDialog({
     },
   });
 
-  const handleSave = () => {
+  const handleSave = (decision: LearningDecision) => {
+    const approving = decision === "approve";
+    if (approving) {
+      const errors = validateManualApproval(
+        correction,
+        otherBusinessConfirmed
+      );
+      if (errors.length > 0) {
+        toast.error(errors.join(" "));
+        return;
+      }
+    }
+    if (approving && needsMatcher && !rulePreview) {
+      toast.error("בחר אופן התאמה מפורש.");
+      return;
+    }
+    if (
+      approving &&
+      saveAsRule &&
+      riskyRuleReasons.length > 0 &&
+      !riskyRuleAcknowledged
+    ) {
+      toast.error("יש לאשר במפורש את הסיכון בכלל העתידי.");
+      return;
+    }
     mutation.mutate({
-      financialNature,
-      cashFlowType,
-      pnlImpact,
-      classificationStatus: "manually_approved",
-      categoryId: categoryId === "none" ? null : Number(categoryId),
-      businessUnit: businessUnit === "none" ? null : businessUnit,
+      ...correction,
+      classificationStatus:
+        decision === "approve" ? "manually_approved" : "needs_review",
       notes: notes || null,
-      applyScope,
-      saveAsRule,
-      ...(needsMatcher ? { ruleMatchType } : {}),
+      decision,
+      applyScope: approving ? applyScope : "row",
+      saveAsRule: approving ? saveAsRule : false,
+      ...(approving && ruleMatchType && rulePreview
+        ? {
+            ruleMatchType,
+            ruleMatchValue: rulePreview.value,
+          }
+        : {}),
+      riskyRuleAcknowledged:
+        approving && saveAsRule ? riskyRuleAcknowledged : false,
+      otherBusinessConfirmed:
+        approving && correction.businessUnit === "other"
+          ? otherBusinessConfirmed
+          : false,
     });
   };
 
@@ -323,11 +399,31 @@ function EditRowDialog({
                 <SelectItem value="none">לא הוגדר</SelectItem>
                 {businessUnits.map((bu) => (
                   <SelectItem key={bu.slug} value={bu.slug}>
-                    {bu.label}
+                    {bu.slug === "other"
+                      ? "Other - עסקי, היחידה המדויקת טרם שויכה"
+                      : bu.slug === "unknown"
+                        ? "Unknown - לא פתור, להשאיר בבדיקה"
+                        : bu.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <div className="space-y-0.5 text-xs text-muted-foreground">
+              <p>Other = confirmed business, exact unit not assigned yet</p>
+              <p>Unknown = unresolved, keep in review</p>
+            </div>
+            {businessUnit === "other" && (
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                <Label htmlFor={`import-other-confirm-${row.id}`}>
+                  אני מאשר שזו פעילות עסקית כללית
+                </Label>
+                <Switch
+                  id={`import-other-confirm-${row.id}`}
+                  checked={otherBusinessConfirmed}
+                  onCheckedChange={setOtherBusinessConfirmed}
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -370,7 +466,10 @@ function EditRowDialog({
             <Switch
               id={`save-rule-${row.id}`}
               checked={saveAsRule}
-              onCheckedChange={setSaveAsRule}
+              onCheckedChange={(checked) => {
+                setSaveAsRule(checked);
+                setRiskyRuleAcknowledged(false);
+              }}
             />
           </div>
 
@@ -378,13 +477,14 @@ function EditRowDialog({
             <div className="space-y-1.5">
               <Label>אופן התאמה</Label>
               <Select
-                value={ruleMatchType}
-                onValueChange={(value) =>
+                value={ruleMatchType || undefined}
+                onValueChange={(value) => {
                   setRuleMatchType(value as LearningRuleMatchType)
-                }
+                  setRiskyRuleAcknowledged(false);
+                }}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue />
+                  <SelectValue placeholder="בחר אופן התאמה" />
                 </SelectTrigger>
                 <SelectContent>
                   {row.counterparty?.trim() && (
@@ -405,22 +505,48 @@ function EditRowDialog({
                       התיאור מכיל
                     </SelectItem>
                   )}
-                  {(row.sourceCategory ?? row.legacyCategory)?.trim() && (
+                  {row.sourceCategory?.trim() && (
                     <SelectItem value="source_category">
                       קטגוריית מקור מדויקת
                     </SelectItem>
                   )}
                 </SelectContent>
               </Select>
+              {rulePreview && (
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <div className="font-medium">ה-pattern המדויק</div>
+                  <div className="mt-1 break-all font-mono" dir="ltr">
+                    {rulePreview.field} · {rulePreview.type} ·{" "}
+                    {rulePreview.value}
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                ההתאמה נגזרת מהשורה הנוכחית. קטגוריית המקור משמשת
-                להתאמה בלבד ואינה הופכת לקטגוריה סופית.
+                רק provider source_category יכול לשמש להתאמה.
+                legacy_category נשאר audit בלבד.
               </p>
+              {saveAsRule && riskyRuleReasons.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    כלל רגיש: {riskyRuleReasons.join("; ")}
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor={`import-risky-rule-${row.id}`}>
+                      אני מאשר במפורש את ה-pattern והסיכון
+                    </Label>
+                    <Switch
+                      id={`import-risky-rule-${row.id}`}
+                      checked={riskyRuleAcknowledged}
+                      onCheckedChange={setRiskyRuleAcknowledged}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
           <Button
             variant="ghost"
             size="sm"
@@ -430,8 +556,16 @@ function EditRowDialog({
             ביטול
           </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={handleSave}
+            onClick={() => handleSave("keep_review")}
+            disabled={mutation.isPending}
+          >
+            שמור והשאר בבדיקה
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => handleSave("approve")}
             disabled={mutation.isPending}
           >
             {mutation.isPending ? "שומר..." : "שמור ואשר"}

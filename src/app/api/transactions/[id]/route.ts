@@ -1,55 +1,26 @@
 import { NextResponse } from "next/server";
-import {
-  setTransactionKind,
-  setTransactionNeedsReview,
-  getTransactionContext,
-} from "@/server/db/queries/transactions";
+import { setTransactionKind } from "@/server/db/queries/transactions";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import { applyTransactionLearning } from "@/server/classification/learning-rules";
+import { LearningPolicyError } from "@/lib/classification-learning-policy";
 import type {
   BusinessUnit,
   CashFlowType,
   FinancialNature,
   LearningApplyScope,
+  LearningDecision,
   LearningRuleMatchType,
   PnlImpact,
 } from "@/lib/types";
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  const { id } = await params;
-  const body = (await request.json()) as { categoryId: number };
-
-  if (!body.categoryId) {
-    return NextResponse.json(
-      { error: "categoryId is required" },
-      { status: 400 }
-    );
-  }
-
-  const numericId = Number(id);
-
-  const before = getTransactionContext(workspaceId, numericId);
-  if (!before) {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
-  }
-  applyTransactionLearning(
-    workspaceId,
-    numericId,
+export async function PUT() {
+  return NextResponse.json(
     {
-      categoryId: body.categoryId,
-      financialNature: before.financialNature,
-      cashFlowType: before.cashFlowType,
-      pnlImpact: before.pnlImpact,
-      businessUnit: before.businessUnit,
+      error:
+        "Direct category approval is disabled. Use the classification dialog.",
     },
-    { scope: "row", saveAsRule: false }
+    { status: 400 }
   );
-
-  return NextResponse.json({ success: true });
 }
 
 export async function PATCH(
@@ -67,15 +38,28 @@ export async function PATCH(
       cashFlowType: CashFlowType;
       pnlImpact: PnlImpact;
       businessUnit: BusinessUnit | null;
+      decision: LearningDecision;
       applyScope: LearningApplyScope;
       saveAsRule: boolean;
       ruleMatchType?: LearningRuleMatchType;
+      ruleMatchValue?: string;
+      riskyRuleAcknowledged?: boolean;
+      otherBusinessConfirmed?: boolean;
     };
   };
 
   const numericId = Number(id);
 
   if (body.learning) {
+    if (
+      body.learning.decision !== "approve" &&
+      body.learning.decision !== "keep_review"
+    ) {
+      return NextResponse.json(
+        { error: "Invalid learning decision" },
+        { status: 400 }
+      );
+    }
     if (
       body.learning.applyScope !== "row" &&
       body.learning.applyScope !== "batch_similar"
@@ -85,34 +69,47 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    const result = applyTransactionLearning(
-      workspaceId,
-      numericId,
-      {
-        categoryId: body.learning.categoryId,
-        financialNature: body.learning.financialNature,
-        cashFlowType: body.learning.cashFlowType,
-        pnlImpact: body.learning.pnlImpact,
-        businessUnit: body.learning.businessUnit,
-      },
-      {
-        scope: body.learning.applyScope,
-        saveAsRule: body.learning.saveAsRule,
-        matchType: body.learning.ruleMatchType,
+    try {
+      const result = applyTransactionLearning(
+        workspaceId,
+        numericId,
+        {
+          categoryId: body.learning.categoryId,
+          financialNature: body.learning.financialNature,
+          cashFlowType: body.learning.cashFlowType,
+          pnlImpact: body.learning.pnlImpact,
+          businessUnit: body.learning.businessUnit,
+        },
+        {
+          decision: body.learning.decision,
+          scope: body.learning.applyScope,
+          saveAsRule: body.learning.saveAsRule,
+          matchType: body.learning.ruleMatchType,
+          matchValue: body.learning.ruleMatchValue,
+          riskyRuleAcknowledged: body.learning.riskyRuleAcknowledged,
+          otherBusinessConfirmed: body.learning.otherBusinessConfirmed,
+        }
+      );
+      return NextResponse.json({ success: true, ...result });
+    } catch (error) {
+      if (error instanceof LearningPolicyError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 400 }
+        );
       }
-    );
-    return NextResponse.json({ success: true, ...result });
+      throw error;
+    }
   }
 
   if (body.approve === true) {
-    const ctx = getTransactionContext(workspaceId, numericId);
-    if (!ctx) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-    setTransactionNeedsReview(workspaceId, numericId, false);
-    // Approval confirms this transaction only. Future learning requires the
-    // explicit "Save as rule" choice in the edit dialog.
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      {
+        error:
+          "Direct approval is disabled. Use the classification dialog so classification_status and learning policy stay consistent.",
+      },
+      { status: 400 }
+    );
   }
 
   if (
@@ -121,7 +118,7 @@ export async function PATCH(
     body.kind !== "transfer"
   ) {
     return NextResponse.json(
-      { error: "kind must be 'expense', 'income', or 'transfer', or set approve:true" },
+      { error: "kind must be 'expense', 'income', or 'transfer'" },
       { status: 400 }
     );
   }

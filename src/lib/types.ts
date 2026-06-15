@@ -652,6 +652,8 @@ export type RuleSource =
 
 export type LearningApplyScope = "row" | "batch_similar";
 
+export type LearningDecision = "approve" | "keep_review";
+
 export type LearningRuleMatchType =
   | "exact_merchant"
   | "merchant_contains"

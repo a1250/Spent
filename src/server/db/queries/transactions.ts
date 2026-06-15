@@ -188,7 +188,7 @@ const TRANSACTION_LIST_FROM = `
 const TRANSACTION_LIST_SELECT = `
   SELECT t.*, c.name AS category_name, c.color AS category_color,
          bc.label AS account_label,
-         COALESCE(ir.source_category, ir.legacy_category) AS source_category
+         ir.source_category AS source_category
   ${TRANSACTION_LIST_FROM}`;
 
 export function queryTransactions(

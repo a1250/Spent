@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,18 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { listBusinessUnits, updateTransactionLearning } from "@/lib/api";
+import {
+  getRiskyRuleReasons,
+  resolveLearningRulePreview,
+  validateManualApproval,
+} from "@/lib/classification-learning-policy";
 import type {
   BusinessUnit,
   CashFlowType,
   Category,
   FinancialNature,
   LearningApplyScope,
+  LearningDecision,
   LearningRuleMatchType,
   PnlImpact,
   TransactionWithCategory,
@@ -88,14 +94,52 @@ export function TransactionLearningDialog({
     useState<LearningApplyScope>("row");
   const [saveAsRule, setSaveAsRule] = useState(false);
   const [ruleMatchType, setRuleMatchType] =
-    useState<LearningRuleMatchType>(
-      transaction.counterparty?.trim()
-        ? "merchant_contains"
-        : "description_contains"
-    );
+    useState<LearningRuleMatchType | "">("");
+  const [riskyRuleAcknowledged, setRiskyRuleAcknowledged] =
+    useState(false);
+  const [otherBusinessConfirmed, setOtherBusinessConfirmed] =
+    useState(false);
   const canApplyBatch =
     transaction.importBatchId != null && transaction.importRowId != null;
   const needsMatcher = applyScope === "batch_similar" || saveAsRule;
+  const correction = {
+    categoryId: categoryId === "none" ? null : Number(categoryId),
+    financialNature,
+    cashFlowType,
+    pnlImpact,
+    businessUnit: businessUnit === "none" ? null : businessUnit,
+  };
+  const rulePreview = useMemo(() => {
+    if (!needsMatcher || !ruleMatchType) return null;
+    try {
+      return resolveLearningRulePreview(
+        {
+          counterparty: transaction.counterparty,
+          description:
+            transaction.cleanDescription ?? transaction.description,
+          sourceCategory: transaction.sourceCategory,
+        },
+        ruleMatchType
+      );
+    } catch {
+      return null;
+    }
+  }, [
+    needsMatcher,
+    ruleMatchType,
+    transaction.cleanDescription,
+    transaction.counterparty,
+    transaction.description,
+    transaction.sourceCategory,
+  ]);
+  const riskyRuleReasons =
+    saveAsRule && ruleMatchType && rulePreview
+      ? getRiskyRuleReasons({
+          matchType: ruleMatchType,
+          matchValue: rulePreview.value,
+          correction,
+        })
+      : [];
 
   const { data: businessUnits = [] } = useQuery({
     queryKey: ["business-units"],
@@ -106,17 +150,45 @@ export function TransactionLearningDialog({
   const leafCategories = categories.filter((c) => c.parentId !== null);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      updateTransactionLearning(transaction.id, {
-        categoryId: categoryId === "none" ? null : Number(categoryId),
-        financialNature,
-        cashFlowType,
-        pnlImpact,
-        businessUnit: businessUnit === "none" ? null : businessUnit,
-        applyScope,
-        saveAsRule,
-        ...(needsMatcher ? { ruleMatchType } : {}),
-      }),
+    mutationFn: (decision: LearningDecision) => {
+      const approving = decision === "approve";
+      if (approving) {
+        const errors = validateManualApproval(
+          correction,
+          otherBusinessConfirmed
+        );
+        if (errors.length > 0) throw new Error(errors.join(" "));
+      }
+      if (approving && needsMatcher && !rulePreview) {
+        throw new Error("בחר אופן התאמה מפורש.");
+      }
+      if (
+        approving &&
+        saveAsRule &&
+        riskyRuleReasons.length > 0 &&
+        !riskyRuleAcknowledged
+      ) {
+        throw new Error("יש לאשר במפורש את הסיכון בכלל העתידי.");
+      }
+      return updateTransactionLearning(transaction.id, {
+        ...correction,
+        decision,
+        applyScope: approving ? applyScope : "row",
+        saveAsRule: approving ? saveAsRule : false,
+        ...(approving && ruleMatchType && rulePreview
+          ? {
+              ruleMatchType,
+              ruleMatchValue: rulePreview.value,
+            }
+          : {}),
+        riskyRuleAcknowledged:
+          approving && saveAsRule ? riskyRuleAcknowledged : false,
+        otherBusinessConfirmed:
+          approving && correction.businessUnit === "other"
+            ? otherBusinessConfirmed
+            : false,
+      });
+    },
     onSuccess: (result) => {
       const suffix =
         result.affectedRows > 1 ? ` (${result.affectedRows} שורות)` : "";
@@ -255,11 +327,31 @@ export function TransactionLearningDialog({
                 <SelectItem value="none">לא הוגדר</SelectItem>
                 {businessUnits.map((bu) => (
                   <SelectItem key={bu.slug} value={bu.slug}>
-                    {bu.label}
+                    {bu.slug === "other"
+                      ? "Other - עסקי, היחידה המדויקת טרם שויכה"
+                      : bu.slug === "unknown"
+                        ? "Unknown - לא פתור, להשאיר בבדיקה"
+                        : bu.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <div className="space-y-0.5 text-xs text-muted-foreground">
+              <p>Other = confirmed business, exact unit not assigned yet</p>
+              <p>Unknown = unresolved, keep in review</p>
+            </div>
+            {businessUnit === "other" && (
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                <Label htmlFor={`other-confirm-${transaction.id}`}>
+                  אני מאשר שזו פעילות עסקית כללית
+                </Label>
+                <Switch
+                  id={`other-confirm-${transaction.id}`}
+                  checked={otherBusinessConfirmed}
+                  onCheckedChange={setOtherBusinessConfirmed}
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -296,7 +388,10 @@ export function TransactionLearningDialog({
             <Switch
               id={`transaction-rule-${transaction.id}`}
               checked={saveAsRule}
-              onCheckedChange={setSaveAsRule}
+              onCheckedChange={(checked) => {
+                setSaveAsRule(checked);
+                setRiskyRuleAcknowledged(false);
+              }}
             />
           </div>
 
@@ -304,13 +399,14 @@ export function TransactionLearningDialog({
             <div className="space-y-1.5">
               <Label>אופן התאמה</Label>
               <Select
-                value={ruleMatchType}
-                onValueChange={(value) =>
+                value={ruleMatchType || undefined}
+                onValueChange={(value) => {
                   setRuleMatchType(value as LearningRuleMatchType)
-                }
+                  setRiskyRuleAcknowledged(false);
+                }}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue />
+                  <SelectValue placeholder="בחר אופן התאמה" />
                 </SelectTrigger>
                 <SelectContent>
                   {transaction.counterparty?.trim() && (
@@ -338,11 +434,37 @@ export function TransactionLearningDialog({
                   )}
                 </SelectContent>
               </Select>
+              {rulePreview && (
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <div className="font-medium">ה-pattern המדויק</div>
+                  <div className="mt-1 break-all font-mono" dir="ltr">
+                    {rulePreview.field} · {rulePreview.type} ·{" "}
+                    {rulePreview.value}
+                  </div>
+                </div>
+              )}
+              {saveAsRule && riskyRuleReasons.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    כלל רגיש: {riskyRuleReasons.join("; ")}
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor={`risky-rule-${transaction.id}`}>
+                      אני מאשר במפורש את ה-pattern והסיכון
+                    </Label>
+                    <Switch
+                      id={`risky-rule-${transaction.id}`}
+                      checked={riskyRuleAcknowledged}
+                      onCheckedChange={setRiskyRuleAcknowledged}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
           <Button
             variant="ghost"
             size="sm"
@@ -352,8 +474,16 @@ export function TransactionLearningDialog({
             ביטול
           </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={() => mutation.mutate()}
+            onClick={() => mutation.mutate("keep_review")}
+            disabled={mutation.isPending}
+          >
+            שמור והשאר בבדיקה
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => mutation.mutate("approve")}
             disabled={mutation.isPending}
           >
             {mutation.isPending ? "שומר..." : "שמור ואשר"}

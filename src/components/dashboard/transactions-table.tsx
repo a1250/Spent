@@ -30,7 +30,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   MoreHorizontal,
   HelpCircle,
-  Check,
   ArrowDownRight,
   ArrowUpRight,
   Wallet,
@@ -43,7 +42,6 @@ import { useQuery } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
   setTransactionKind,
-  approveTransactionCategory,
   getCategories,
   setTransactionExcluded,
 } from "@/lib/api";
@@ -161,18 +159,6 @@ export function TransactionsTable({
       queryClient.invalidateQueries({ queryKey: ["summary"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
       queryClient.invalidateQueries({ queryKey: ["categories"] });
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleApprove = async (txnId: number) => {
-    setUpdatingId(txnId);
-    try {
-      await approveTransactionCategory(txnId);
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["summary"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
     } finally {
       setUpdatingId(null);
     }
@@ -621,7 +607,12 @@ export function TransactionsTable({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleApprove(txn.id)}
+                              onClick={() =>
+                                setLearningEdit({
+                                  transaction: txn,
+                                  initialCategoryId: txn.categoryId,
+                                })
+                              }
                               disabled={updatingId === txn.id}
                               className="h-6 gap-1 px-2 text-[11px] font-medium"
                               style={{
@@ -631,7 +622,7 @@ export function TransactionsTable({
                               }}
                               title={t("rowApproveTooltip")}
                             >
-                              <Check className="h-3 w-3" />
+                              <Pencil className="h-3 w-3" />
                               {t("rowApprove")}
                             </Button>
                           )}

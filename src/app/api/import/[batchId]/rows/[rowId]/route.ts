@@ -10,6 +10,7 @@ import {
   type DuplicateReviewAction,
 } from "@/server/import/core/orchestrator";
 import { applyImportRowLearning } from "@/server/classification/learning-rules";
+import { LearningPolicyError } from "@/lib/classification-learning-policy";
 import type {
   FinancialNature,
   CashFlowType,
@@ -17,6 +18,7 @@ import type {
   ClassificationStatus,
   BusinessUnit,
   LearningApplyScope,
+  LearningDecision,
   LearningRuleMatchType,
 } from "@/lib/types";
 
@@ -56,8 +58,12 @@ export async function PATCH(
       duplicateAction?: DuplicateReviewAction;
       pendingAction?: "import_pending";
       saveAsRule?: boolean;
+      decision?: LearningDecision;
       applyScope?: LearningApplyScope;
       ruleMatchType?: LearningRuleMatchType;
+      ruleMatchValue?: string;
+      riskyRuleAcknowledged?: boolean;
+      otherBusinessConfirmed?: boolean;
     };
 
     if (body.duplicateAction) {
@@ -106,6 +112,16 @@ export async function PATCH(
       body.applyScope !== undefined;
     if (isClassificationEdit) {
       if (
+        body.decision !== undefined &&
+        body.decision !== "approve" &&
+        body.decision !== "keep_review"
+      ) {
+        return NextResponse.json(
+          { error: "Invalid learning decision" },
+          { status: 400 }
+        );
+      }
+      if (
         body.applyScope !== undefined &&
         body.applyScope !== "row" &&
         body.applyScope !== "batch_similar"
@@ -131,9 +147,13 @@ export async function PATCH(
               : row.businessUnit,
         },
         {
+          decision: body.decision ?? "approve",
           scope: body.applyScope ?? "row",
           saveAsRule: body.saveAsRule === true,
           matchType: body.ruleMatchType,
+          matchValue: body.ruleMatchValue,
+          riskyRuleAcknowledged: body.riskyRuleAcknowledged,
+          otherBusinessConfirmed: body.otherBusinessConfirmed,
         }
       );
       return NextResponse.json({ success: true, ...result });
@@ -142,6 +162,9 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to update row";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message },
+      { status: err instanceof LearningPolicyError ? 400 : 500 }
+    );
   }
 }

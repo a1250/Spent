@@ -20,6 +20,7 @@ import type {
   BusinessUnit,
   BusinessUnitRecord,
   LearningApplyScope,
+  LearningDecision,
   LearningRuleMatchType,
   DataQualitySummary,
   NeedsReviewTransaction,
@@ -250,14 +251,6 @@ export function setTransactionKind(id: number, kind: TransactionKind) {
   });
 }
 
-export function approveTransactionCategory(id: number) {
-  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approve: true }),
-  });
-}
-
 export function setTransactionExcluded(
   id: number,
   excluded: boolean,
@@ -321,14 +314,6 @@ export function getCategories(
   return fetchJSON<Category[]>(`/api/categories${query}`);
 }
 
-export function updateTransactionCategory(id: number, categoryId: number) {
-  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categoryId }),
-  });
-}
-
 export function updateTransactionLearning(
   id: number,
   learning: {
@@ -337,9 +322,13 @@ export function updateTransactionLearning(
     cashFlowType: CashFlowType;
     pnlImpact: PnlImpact;
     businessUnit: BusinessUnit | null;
+    decision: LearningDecision;
     applyScope: LearningApplyScope;
     saveAsRule: boolean;
     ruleMatchType?: LearningRuleMatchType;
+    ruleMatchValue?: string;
+    riskyRuleAcknowledged?: boolean;
+    otherBusinessConfirmed?: boolean;
   }
 ) {
   return fetchJSON<{
@@ -790,8 +779,12 @@ export interface ImportRowPatch {
   duplicateAction?: "skip_duplicate" | "import_anyway" | "keep_pending";
   pendingAction?: "import_pending";
   saveAsRule?: boolean;
+  decision?: LearningDecision;
   applyScope?: LearningApplyScope;
   ruleMatchType?: LearningRuleMatchType;
+  ruleMatchValue?: string;
+  riskyRuleAcknowledged?: boolean;
+  otherBusinessConfirmed?: boolean;
 }
 
 export function patchImportRow(

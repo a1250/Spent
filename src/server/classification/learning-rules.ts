@@ -6,32 +6,32 @@ import {
   listImportRows,
 } from "@/server/db/queries/import-rows";
 import { saveUserClassificationRule } from "@/server/db/queries/classification-rules";
+import {
+  getRiskyRuleReasons,
+  LearningPolicyError,
+  resolveLearningRulePreview,
+  sameRulePattern,
+  validateManualApproval,
+  type LearningCandidate,
+  type LearningRulePreview,
+} from "@/lib/classification-learning-policy";
 import type {
   ClassificationCorrection,
+  LearningDecision,
   ImportRow,
   LearningApplyScope,
   LearningRuleMatchType,
-  RuleMatchField,
-  RuleMatchType,
   TransactionDirection,
 } from "@/lib/types";
 
-interface LearningCandidate {
-  counterparty: string | null;
-  cleanDescription: string | null;
-  sourceCategory: string | null;
-}
-
-interface StoredMatch {
-  field: RuleMatchField;
-  type: RuleMatchType;
-  value: string;
-}
-
 interface ApplyLearningOptions {
+  decision: LearningDecision;
   scope: LearningApplyScope;
   saveAsRule: boolean;
   matchType?: LearningRuleMatchType;
+  matchValue?: string;
+  riskyRuleAcknowledged?: boolean;
+  otherBusinessConfirmed?: boolean;
 }
 
 export interface LearningResult {
@@ -39,55 +39,16 @@ export interface LearningResult {
   ruleId: number | null;
 }
 
-function text(value: string | null | undefined): string {
-  return value?.trim() ?? "";
-}
-
-function resolveStoredMatch(
-  candidate: LearningCandidate,
-  requested: LearningRuleMatchType
-): StoredMatch {
-  const counterparty = text(candidate.counterparty);
-  const description = text(candidate.cleanDescription);
-  const sourceCategory = text(candidate.sourceCategory);
-
-  switch (requested) {
-    case "exact_merchant":
-      if (!counterparty) throw new Error("This row has no merchant to match");
-      return { field: "counterparty", type: "exact", value: counterparty };
-    case "merchant_contains":
-      if (!counterparty) throw new Error("This row has no merchant to match");
-      return { field: "counterparty", type: "contains", value: counterparty };
-    case "description_contains":
-      if (!description) throw new Error("This row has no description to match");
-      return { field: "description", type: "contains", value: description };
-    case "exact_counterparty":
-      if (!counterparty) {
-        throw new Error("This row has no counterparty to match");
-      }
-      return { field: "counterparty", type: "exact", value: counterparty };
-    case "source_category":
-      if (!sourceCategory) {
-        throw new Error("This row has no source category to match");
-      }
-      return {
-        field: "source_category",
-        type: "exact",
-        value: sourceCategory,
-      };
-  }
-}
-
 function matchesStoredRule(
   candidate: LearningCandidate,
-  match: StoredMatch
+  match: LearningRulePreview
 ): boolean {
   const haystack =
     match.field === "counterparty"
-      ? text(candidate.counterparty)
+      ? candidate.counterparty?.trim() ?? ""
       : match.field === "source_category"
-        ? text(candidate.sourceCategory)
-        : text(candidate.cleanDescription);
+        ? candidate.sourceCategory?.trim() ?? ""
+        : candidate.description?.trim() ?? "";
   const normalizedHaystack = haystack.toLocaleLowerCase();
   const normalizedNeedle = match.value.toLocaleLowerCase();
   return match.type === "contains"
@@ -98,9 +59,16 @@ function matchesStoredRule(
 function updateImportRow(
   row: ImportRow,
   correction: ClassificationCorrection,
+  decision: LearningDecision,
   syncLinkedTransaction = true
 ): void {
   const db = getDb();
+  const status =
+    decision === "approve" ? "manually_approved" : "needs_review";
+  const explanation =
+    decision === "approve"
+      ? "Manual correction"
+      : "Manual correction; kept in review";
   db.prepare(
     `UPDATE import_rows
      SET category_id = ?,
@@ -108,9 +76,9 @@ function updateImportRow(
          cash_flow_type = ?,
          pnl_impact = ?,
          business_unit = ?,
-         classification_status = 'manually_approved',
-         confidence_score = 1,
-         ai_explanation = 'Manual correction',
+         classification_status = ?,
+         confidence_score = ?,
+         ai_explanation = ?,
          updated_at = datetime('now')
      WHERE workspace_id = ? AND id = ?`
   ).run(
@@ -119,20 +87,35 @@ function updateImportRow(
     correction.cashFlowType,
     correction.pnlImpact,
     correction.businessUnit,
+    status,
+    decision === "approve" ? 1 : null,
+    explanation,
     row.workspaceId,
     row.id
   );
 
   if (syncLinkedTransaction && row.transactionId != null) {
-    updateTransaction(row.workspaceId, row.transactionId, correction);
+    updateTransaction(
+      row.workspaceId,
+      row.transactionId,
+      correction,
+      decision
+    );
   }
 }
 
 function updateTransaction(
   workspaceId: number,
   transactionId: number,
-  correction: ClassificationCorrection
+  correction: ClassificationCorrection,
+  decision: LearningDecision
 ): void {
+  const status =
+    decision === "approve" ? "manually_approved" : "needs_review";
+  const explanation =
+    decision === "approve"
+      ? "Manual correction"
+      : "Manual correction; kept in review";
   getDb()
     .prepare(
       `UPDATE transactions
@@ -142,10 +125,10 @@ function updateTransaction(
            cash_flow_type = ?,
            pnl_impact = ?,
            business_unit = ?,
-           classification_status = 'manually_approved',
-           confidence_score = 1,
-           ai_explanation = 'Manual correction',
-           needs_review = 0,
+           classification_status = ?,
+           confidence_score = ?,
+           ai_explanation = ?,
+           needs_review = ?,
            updated_at = datetime('now')
        WHERE workspace_id = ? AND id = ?`
     )
@@ -156,6 +139,10 @@ function updateTransaction(
       correction.cashFlowType,
       correction.pnlImpact,
       correction.businessUnit,
+      status,
+      decision === "approve" ? 1 : null,
+      explanation,
+      decision === "approve" ? 0 : 1,
       workspaceId,
       transactionId
     );
@@ -164,14 +151,14 @@ function updateTransaction(
 function importRowCandidate(row: ImportRow): LearningCandidate {
   return {
     counterparty: row.counterparty,
-    cleanDescription: row.cleanDescription ?? row.rawDescription,
-    sourceCategory: row.sourceCategory ?? row.legacyCategory,
+    description: row.cleanDescription ?? row.rawDescription,
+    sourceCategory: row.sourceCategory,
   };
 }
 
 function saveRule(
   workspaceId: number,
-  match: StoredMatch,
+  match: LearningRulePreview,
   correction: ClassificationCorrection,
   direction: TransactionDirection | null,
   importRowId: number | null,
@@ -192,6 +179,73 @@ function saveRule(
   }).id;
 }
 
+function validateLearningOptions(
+  candidate: LearningCandidate,
+  correction: ClassificationCorrection,
+  options: ApplyLearningOptions
+): LearningRulePreview | null {
+  if (options.decision === "keep_review") {
+    if (options.scope !== "row" || options.saveAsRule) {
+      throw new LearningPolicyError(
+        "Keeping a row in review is row-only and cannot create a future rule."
+      );
+    }
+    return null;
+  }
+
+  const approvalErrors = validateManualApproval(
+    correction,
+    options.otherBusinessConfirmed === true
+  );
+  if (approvalErrors.length > 0) {
+    throw new LearningPolicyError(approvalErrors.join(" "));
+  }
+
+  const needsMatch =
+    options.scope === "batch_similar" || options.saveAsRule;
+  if (!needsMatch) return null;
+  if (!options.matchType) {
+    throw new LearningPolicyError("Choose an explicit match type.");
+  }
+
+  let match: LearningRulePreview;
+  try {
+    match = resolveLearningRulePreview(candidate, options.matchType);
+  } catch (error) {
+    throw new LearningPolicyError(
+      error instanceof Error ? error.message : "Invalid match pattern."
+    );
+  }
+  if (options.saveAsRule) {
+    if (!options.matchValue?.trim()) {
+      throw new LearningPolicyError(
+        "Confirm the exact future-rule pattern."
+      );
+    }
+    if (!sameRulePattern(match, options.matchValue)) {
+      throw new LearningPolicyError(
+        "The submitted rule pattern does not match the selected row."
+      );
+    }
+    const riskReasons = getRiskyRuleReasons({
+      matchType: options.matchType,
+      matchValue: match.value,
+      correction,
+    });
+    if (
+      riskReasons.length > 0 &&
+      options.riskyRuleAcknowledged !== true
+    ) {
+      throw new LearningPolicyError(
+        `This future rule needs explicit risk acknowledgement: ${riskReasons.join(
+          "; "
+        )}.`
+      );
+    }
+  }
+  return match;
+}
+
 export function applyImportRowLearning(
   workspaceId: number,
   batchId: number,
@@ -204,13 +258,11 @@ export function applyImportRowLearning(
     throw new Error(`Import row ${rowId} not found`);
   }
 
-  const needsMatch = options.scope === "batch_similar" || options.saveAsRule;
-  const match = needsMatch
-    ? resolveStoredMatch(
-        importRowCandidate(sourceRow),
-        options.matchType ?? "merchant_contains"
-      )
-    : null;
+  const match = validateLearningOptions(
+    importRowCandidate(sourceRow),
+    correction,
+    options
+  );
   const targets =
     options.scope === "batch_similar" && match
       ? listImportRows(workspaceId, batchId).filter((row) =>
@@ -220,7 +272,7 @@ export function applyImportRowLearning(
 
   return getDb().transaction(() => {
     for (const target of targets) {
-      updateImportRow(target, correction);
+      updateImportRow(target, correction, options.decision);
     }
     const ruleId =
       options.saveAsRule && match
@@ -260,7 +312,7 @@ function getTransactionLearningContext(
               t.description,
               t.clean_description as cleanDescription,
               t.counterparty,
-              COALESCE(r.source_category, r.legacy_category) as sourceCategory,
+              r.source_category as sourceCategory,
               t.kind
        FROM transactions t
        LEFT JOIN import_rows r ON r.id = t.import_row_id
@@ -297,24 +349,26 @@ export function applyTransactionLearning(
 
   const candidate: LearningCandidate = {
     counterparty: transaction.counterparty,
-    cleanDescription:
+    description:
       transaction.cleanDescription ?? transaction.description,
     sourceCategory: transaction.sourceCategory,
   };
-  const match = options.saveAsRule
-    ? resolveStoredMatch(
-        candidate,
-        options.matchType ?? "merchant_contains"
-      )
-    : null;
+  const match = validateLearningOptions(candidate, correction, options);
   const direction: TransactionDirection =
     transaction.kind === "transfer" ? "transfer" : transaction.kind;
 
   return getDb().transaction(() => {
-    updateTransaction(workspaceId, transactionId, correction);
+    updateTransaction(
+      workspaceId,
+      transactionId,
+      correction,
+      options.decision
+    );
     if (transaction.importRowId != null) {
       const importRow = getImportRow(workspaceId, transaction.importRowId);
-      if (importRow) updateImportRow(importRow, correction, false);
+      if (importRow) {
+        updateImportRow(importRow, correction, options.decision, false);
+      }
     }
     const ruleId =
       options.saveAsRule && match

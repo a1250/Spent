@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getRuleEffectivenessReport } from "@/lib/api";
+import { RuleProvenanceBadge } from "@/components/import/import-intelligence-badges";
 import type {
   RuleEffectiveness,
   RuleEffectivenessReport,
@@ -110,6 +111,11 @@ export function RuleEffectivenessPage() {
         {reportQuery.data && (
           <>
             <SummaryCards summary={reportQuery.data.summary} />
+            {reportQuery.data.summary.rulesWithApplications === 0 && (
+              <ZeroApplicationsNotice
+                ruleCount={reportQuery.data.summary.totalUserApprovedRules}
+              />
+            )}
             <RulesTable rules={reportQuery.data.rules} />
           </>
         )}
@@ -188,6 +194,24 @@ function SummaryCards({
   );
 }
 
+function ZeroApplicationsNotice({ ruleCount }: { ruleCount: number }) {
+  return (
+    <section className="rounded-2xl border border-dashed bg-muted/20 p-5">
+      <div className="flex items-start gap-3">
+        <TimerOff className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+        <div>
+          <h2 className="font-medium">No rule applications recorded yet</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">
+            All {integer.format(ruleCount)} user-approved rules are ready for
+            future matching imports. Zero applications is expected because
+            existing manual classifications were intentionally not backfilled.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RulesTable({ rules }: { rules: RuleEffectiveness[] }) {
   return (
     <section className="overflow-hidden rounded-2xl border bg-card">
@@ -226,12 +250,16 @@ function RulesTable({ rules }: { rules: RuleEffectiveness[] }) {
           </TableHeader>
           <TableBody>
             {rules.map((rule) => (
-              <TableRow key={rule.ruleId}>
+              <TableRow
+                key={rule.ruleId}
+                className={rule.appliedRows === 0 ? "bg-muted/[0.12]" : undefined}
+              >
                 <TableCell>
-                  <div className="font-medium">#{rule.ruleId}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {readable(rule.ruleSource)}
-                  </div>
+                  <RuleProvenanceBadge
+                    ruleId={rule.ruleId}
+                    source={rule.ruleSource}
+                    confidence={null}
+                  />
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -265,8 +293,19 @@ function RulesTable({ rules }: { rules: RuleEffectiveness[] }) {
                 </TableCell>
                 <TableCell>{rule.businessUnit ?? "—"}</TableCell>
                 <TableCell>{formatDate(rule.createdAt)}</TableCell>
-                <TableCell className="text-end font-medium tabular-nums">
-                  {integer.format(rule.appliedRows)}
+                <TableCell className="text-end tabular-nums">
+                  {rule.appliedRows === 0 ? (
+                    <Badge
+                      variant="outline"
+                      className="whitespace-nowrap text-muted-foreground"
+                    >
+                      Awaiting match
+                    </Badge>
+                  ) : (
+                    <span className="font-medium">
+                      {integer.format(rule.appliedRows)}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>{formatDate(rule.lastAppliedAt)}</TableCell>
                 <TableCell className="text-end tabular-nums">

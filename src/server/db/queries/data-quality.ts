@@ -127,9 +127,18 @@ export function getNeedsReviewTransactions(
          c.name AS category_name,
          c.color AS category_color,
          bc.label AS account_label,
-         COALESCE(ir.source_category, ir.legacy_category) AS source_category,
+         ir.source_category AS source_category,
          ir.legacy_category AS legacyCategory,
+         ir.legacy_rule_category AS legacyRuleCategory,
+         ir.source_type AS sourceType,
+         ir.source_section AS sourceSection,
+         ir.source_sheet_name AS sourceSheetName,
+         ir.import_status AS importStatus,
+         ir.applied_rule_id AS appliedRuleId,
+         ir.applied_rule_confidence AS appliedRuleConfidence,
+         ir.applied_rule_source AS appliedRuleSource,
          ib.source_filename AS sourceFilename,
+         ib.adapter_key AS adapterKey,
          MAX(
            0,
            CAST(julianday('now') - julianday(t.created_at) AS INTEGER)
@@ -146,7 +155,16 @@ export function getNeedsReviewTransactions(
     .all(...params, safeLimit) as Array<
     Record<string, unknown> & {
       legacyCategory: string | null;
+      legacyRuleCategory: string | null;
       sourceFilename: string | null;
+      adapterKey: NeedsReviewTransaction["adapterKey"];
+      sourceType: NeedsReviewTransaction["sourceType"];
+      sourceSection: string | null;
+      sourceSheetName: string | null;
+      importStatus: NeedsReviewTransaction["importStatus"];
+      appliedRuleId: number | null;
+      appliedRuleConfidence: number | null;
+      appliedRuleSource: NeedsReviewTransaction["appliedRuleSource"];
       daysPending: number;
     }
   >;
@@ -154,7 +172,16 @@ export function getNeedsReviewTransactions(
   return rows.map((row) => ({
     ...mapTransactionRow(row),
     legacyCategory: row.legacyCategory ?? null,
+    legacyRuleCategory: row.legacyRuleCategory ?? null,
     sourceFilename: row.sourceFilename ?? null,
+    adapterKey: row.adapterKey ?? null,
+    sourceType: row.sourceType ?? null,
+    sourceSection: row.sourceSection ?? null,
+    sourceSheetName: row.sourceSheetName ?? null,
+    importStatus: row.importStatus ?? null,
+    appliedRuleId: row.appliedRuleId ?? null,
+    appliedRuleConfidence: row.appliedRuleConfidence ?? null,
+    appliedRuleSource: row.appliedRuleSource ?? null,
     daysPending: row.daysPending ?? 0,
   }));
 }
@@ -204,14 +231,31 @@ export function getImportRowsNeedingAction(
          r.import_status AS importStatus,
          r.transaction_status AS transactionStatus,
          r.classification_status AS classificationStatus,
+         r.financial_nature AS financialNature,
+         r.cash_flow_type AS cashFlowType,
+         r.pnl_impact AS pnlImpact,
+         r.category_id AS categoryId,
+         c.name AS categoryName,
+         c.color AS categoryColor,
+         r.business_unit AS businessUnit,
          r.legacy_category AS legacyCategory,
+         r.legacy_rule_category AS legacyRuleCategory,
          r.source_category AS sourceCategory,
+         r.source_type AS sourceType,
+         r.source_section AS sourceSection,
+         r.source_sheet_name AS sourceSheetName,
+         r.billing_date AS billingDate,
+         r.value_date AS valueDate,
+         r.applied_rule_id AS appliedRuleId,
+         r.applied_rule_confidence AS appliedRuleConfidence,
+         r.applied_rule_source AS appliedRuleSource,
          r.transaction_id AS transactionId,
          r.duplicate_of_transaction_id AS duplicateOfTransactionId,
          r.is_duplicate AS isDuplicate,
          r.created_at AS createdAt
        FROM import_rows r
        JOIN import_batches b ON b.id = r.batch_id
+       LEFT JOIN categories c ON c.id = r.category_id
        WHERE ${conditions.join(" AND ")}
        ORDER BY
          CASE r.import_status

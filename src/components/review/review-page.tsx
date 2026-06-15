@@ -19,6 +19,14 @@ import { CoverageBanner } from "./coverage-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  CashFlowTypeBadge,
+  ClassificationStatusBadge,
+  ImportRowStatusBadge,
+  PnlImpactBadge,
+  RuleProvenanceBadge,
+  TransactionStatusBadge,
+} from "@/components/import/import-intelligence-badges";
+import {
   getCategories,
   getDataQualitySummary,
   getImportRowsNeedingAction,
@@ -172,17 +180,18 @@ function TransactionsReviewTable({
 
   return (
     <div className="max-h-[620px] overflow-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[1180px] text-sm">
+      <table className="w-full min-w-[1540px] text-sm">
         <thead className="sticky top-0 z-[1] bg-muted/95 text-xs text-muted-foreground backdrop-blur">
           <tr className="border-b">
             <th className="px-3 py-2 text-start font-medium">ID</th>
             <th className="px-3 py-2 text-start font-medium">תאריך</th>
             <th className="px-3 py-2 text-start font-medium">תיאור / צד נגדי</th>
             <th className="px-3 py-2 text-end font-medium">סכום</th>
-            <th className="px-3 py-2 text-start font-medium">יחידה עסקית</th>
-            <th className="px-3 py-2 text-start font-medium">קטגוריה</th>
-            <th className="px-3 py-2 text-start font-medium">ייבוא</th>
-            <th className="px-3 py-2 text-start font-medium">קטגוריה ישנה</th>
+            <th className="px-3 py-2 text-start font-medium">סטטוס</th>
+            <th className="px-3 py-2 text-start font-medium">סיווג נוכחי</th>
+            <th className="px-3 py-2 text-start font-medium">מקור ייבוא</th>
+            <th className="px-3 py-2 text-start font-medium">Audit בלבד</th>
+            <th className="px-3 py-2 text-start font-medium">Rule intelligence</th>
             <th className="px-3 py-2 text-center font-medium">ממתינה</th>
             <th className="px-3 py-2 text-start font-medium">פעולה</th>
           </tr>
@@ -190,7 +199,14 @@ function TransactionsReviewTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20">
-              <td className="px-3 py-2 font-mono text-xs">#{row.id}</td>
+              <td className="px-3 py-2 font-mono text-xs">
+                <div>tx #{row.id}</div>
+                {row.importRowId != null && (
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    import row #{row.importRowId}
+                  </div>
+                )}
+              </td>
               <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
                 {row.date}
               </td>
@@ -213,39 +229,49 @@ function TransactionsReviewTable({
               >
                 {moneyFormatter.format(row.chargedAmount)}
               </td>
-              <td className="px-3 py-2">{row.businessUnit ?? "—"}</td>
               <td className="px-3 py-2">
-                {row.categoryName ? (
-                  <span className="inline-flex items-center gap-1.5">
+                <ClassificationStatusBadge status={row.classificationStatus} />
+              </td>
+              <td className="max-w-[220px] px-3 py-2">
+                <div className="flex items-center gap-1.5">
+                  {row.categoryName && (
                     <span
-                      className="h-2 w-2 rounded-full"
+                      className="h-2 w-2 shrink-0 rounded-full"
                       style={{ backgroundColor: row.categoryColor ?? "#94a3b8" }}
                     />
-                    {row.categoryName}
+                  )}
+                  <span className="truncate font-medium">
+                    {row.categoryName ?? "ללא קטגוריה"}
                   </span>
-                ) : (
-                  "—"
-                )}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  יחידה: {row.businessUnit ?? "unknown"}
+                </div>
               </td>
-              <td className="max-w-[210px] px-3 py-2">
-                {row.importBatchId != null ? (
-                  <Link
-                    href={`/import?batchId=${row.importBatchId}`}
-                    className="group inline-flex max-w-full items-center gap-1 text-xs text-primary"
-                  >
-                    <span className="truncate">
-                      #{row.importBatchId} · {row.sourceFilename ?? "ייבוא"}
-                    </span>
-                    <ArrowUpRight className="h-3 w-3 shrink-0 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                  </Link>
-                ) : (
-                  <span className="text-xs text-muted-foreground">לא מייבוא</span>
-                )}
+              <td className="max-w-[240px] px-3 py-2">
+                <SourceContext
+                  batchId={row.importBatchId}
+                  sourceFilename={row.sourceFilename}
+                  adapterKey={row.adapterKey}
+                  sourceType={row.sourceType}
+                  sourceSection={row.sourceSection}
+                  sourceSheetName={row.sourceSheetName}
+                  importStatus={row.importStatus}
+                />
               </td>
-              <td className="max-w-[180px] px-3 py-2">
-                <span className="block truncate text-xs">
-                  {row.legacyCategory ?? "—"}
-                </span>
+              <td className="max-w-[220px] px-3 py-2">
+                <AuditCategoryContext
+                  sourceCategory={row.sourceCategory}
+                  legacyCategory={row.legacyCategory}
+                />
+              </td>
+              <td className="px-3 py-2">
+                <RuleProvenanceBadge
+                  ruleId={row.appliedRuleId}
+                  source={row.appliedRuleSource}
+                  confidence={row.appliedRuleConfidence}
+                  legacyRuleCategory={row.legacyRuleCategory}
+                />
               </td>
               <td className="px-3 py-2 text-center text-xs tabular-nums text-muted-foreground">
                 {row.daysPending} ימים
@@ -304,18 +330,18 @@ function ImportRowsActionTable({
 
   return (
     <div className="max-h-[620px] overflow-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[1260px] text-sm">
+      <table className="w-full min-w-[1780px] text-sm">
         <thead className="sticky top-0 z-[1] bg-muted/95 text-xs text-muted-foreground backdrop-blur">
           <tr className="border-b">
             <th className="px-3 py-2 text-start font-medium">שורה</th>
-            <th className="px-3 py-2 text-start font-medium">Batch / קובץ</th>
-            <th className="px-3 py-2 text-start font-medium">תאריך</th>
+            <th className="px-3 py-2 text-start font-medium">מקור</th>
+            <th className="px-3 py-2 text-start font-medium">תאריכים</th>
             <th className="px-3 py-2 text-start font-medium">תיאור</th>
             <th className="px-3 py-2 text-end font-medium">סכום</th>
-            <th className="px-3 py-2 text-start font-medium">Import status</th>
-            <th className="px-3 py-2 text-start font-medium">Transaction status</th>
-            <th className="px-3 py-2 text-start font-medium">Classification</th>
-            <th className="px-3 py-2 text-start font-medium">קטגוריית מקור</th>
+            <th className="px-3 py-2 text-start font-medium">סטטוס / סיבה</th>
+            <th className="px-3 py-2 text-start font-medium">Audit בלבד</th>
+            <th className="px-3 py-2 text-start font-medium">סיווג</th>
+            <th className="px-3 py-2 text-start font-medium">Rule intelligence</th>
             <th className="px-3 py-2 text-start font-medium">פעולות</th>
           </tr>
         </thead>
@@ -331,19 +357,29 @@ function ImportRowsActionTable({
                     מקור {row.rawRowNumber}
                   </div>
                 </td>
-                <td className="max-w-[230px] px-3 py-2">
-                  <Link
-                    href={`/import?batchId=${row.batchId}`}
-                    className="block truncate text-xs font-medium text-primary hover:underline"
-                  >
-                    #{row.batchId} · {row.sourceFilename}
-                  </Link>
-                  <div className="text-[10px] text-muted-foreground">
-                    {row.adapterKey}
-                  </div>
+                <td className="max-w-[260px] px-3 py-2">
+                  <SourceContext
+                    batchId={row.batchId}
+                    sourceFilename={row.sourceFilename}
+                    adapterKey={row.adapterKey}
+                    sourceType={row.sourceType}
+                    sourceSection={row.sourceSection}
+                    sourceSheetName={row.sourceSheetName}
+                    importStatus={row.importStatus}
+                  />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
-                  {row.date ?? "—"}
+                  <div>{row.date ?? "—"}</div>
+                  {row.billingDate && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      billing {row.billingDate}
+                    </div>
+                  )}
+                  {row.valueDate && row.valueDate !== row.date && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      value {row.valueDate}
+                    </div>
+                  )}
                 </td>
                 <td className="max-w-[260px] px-3 py-2">
                   <div className="truncate" title={row.description ?? undefined}>
@@ -353,28 +389,44 @@ function ImportRowsActionTable({
                 <td className="whitespace-nowrap px-3 py-2 text-end font-mono tabular-nums">
                   {row.amount == null ? "—" : moneyFormatter.format(row.amount)}
                 </td>
-                <td className="px-3 py-2">
-                  <ImportStatusBadge status={row.importStatus} />
+                <td className="max-w-[260px] px-3 py-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    <ImportRowStatusBadge status={row.importStatus} />
+                    <TransactionStatusBadge status={row.transactionStatus} />
+                    <ClassificationStatusBadge
+                      status={row.classificationStatus}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {getImportRowReason(row)}
+                  </p>
+                </td>
+                <td className="max-w-[220px] px-3 py-2">
+                  <AuditCategoryContext
+                    sourceCategory={row.sourceCategory}
+                    legacyCategory={row.legacyCategory}
+                  />
+                </td>
+                <td className="max-w-[250px] px-3 py-2">
+                  <div className="font-medium">
+                    {row.categoryName ?? "ללא קטגוריה"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {row.financialNature.replaceAll("_", " ")} ·{" "}
+                    {row.businessUnit ?? "unknown"}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <CashFlowTypeBadge type={row.cashFlowType} />
+                    <PnlImpactBadge impact={row.pnlImpact} />
+                  </div>
                 </td>
                 <td className="px-3 py-2">
-                  <Badge
-                    variant="outline"
-                    className={
-                      row.transactionStatus === "pending"
-                        ? "border-violet-500/40 text-violet-700 dark:text-violet-300"
-                        : ""
-                    }
-                  >
-                    {row.transactionStatus}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2">
-                  <Badge variant="secondary">{row.classificationStatus}</Badge>
-                </td>
-                <td className="max-w-[180px] px-3 py-2">
-                  <span className="block truncate text-xs">
-                    {row.sourceCategory ?? row.legacyCategory ?? "—"}
-                  </span>
+                  <RuleProvenanceBadge
+                    ruleId={row.appliedRuleId}
+                    source={row.appliedRuleSource}
+                    confidence={row.appliedRuleConfidence}
+                    legacyRuleCategory={row.legacyRuleCategory}
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex min-w-max items-center gap-1.5">
@@ -452,29 +504,108 @@ function ImportRowsActionTable({
   );
 }
 
-function ImportStatusBadge({
-  status,
+function SourceContext({
+  batchId,
+  sourceFilename,
+  adapterKey,
+  sourceType,
+  sourceSection,
+  sourceSheetName,
+  importStatus,
 }: {
-  status: ImportRowActionItem["importStatus"];
+  batchId: number | null;
+  sourceFilename: string | null;
+  adapterKey: string | null;
+  sourceType: string | null;
+  sourceSection: string | null;
+  sourceSheetName: string | null;
+  importStatus: ImportRowActionItem["importStatus"] | null;
 }) {
-  if (status === "pending_duplicate") {
-    return (
-      <Badge className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300">
-        pending duplicate
-      </Badge>
-    );
+  if (batchId == null) {
+    return <span className="text-xs text-muted-foreground">לא מייבוא</span>;
   }
-  if (status === "skipped_duplicate") {
-    return <Badge variant="secondary">skipped duplicate</Badge>;
+
+  return (
+    <div className="space-y-1">
+      <Link
+        href={`/import?batchId=${batchId}`}
+        className="group inline-flex max-w-full items-center gap-1 text-xs font-medium text-primary"
+      >
+        <span className="truncate">
+          #{batchId} · {sourceFilename ?? "ייבוא"}
+        </span>
+        <ArrowUpRight className="h-3 w-3 shrink-0 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+      </Link>
+      <div className="text-[10px] leading-4 text-muted-foreground">
+        {[adapterKey, sourceType, sourceSection].filter(Boolean).join(" · ") ||
+          "source metadata unavailable"}
+      </div>
+      {sourceSheetName && (
+        <div className="text-[10px] text-muted-foreground">
+          sheet: {sourceSheetName}
+        </div>
+      )}
+      {importStatus && <ImportRowStatusBadge status={importStatus} />}
+    </div>
+  );
+}
+
+function AuditCategoryContext({
+  sourceCategory,
+  legacyCategory,
+}: {
+  sourceCategory: string | null;
+  legacyCategory: string | null;
+}) {
+  if (!sourceCategory && !legacyCategory) {
+    return <span className="text-xs text-muted-foreground">אין metadata</span>;
   }
-  if (status === "pending") {
-    return (
-      <Badge className="border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-300">
-        pending
-      </Badge>
-    );
+
+  return (
+    <div className="space-y-1 text-xs">
+      {sourceCategory && (
+        <div className="truncate" title={sourceCategory}>
+          <span className="text-muted-foreground">source:</span>{" "}
+          {sourceCategory}
+        </div>
+      )}
+      {legacyCategory && legacyCategory !== sourceCategory && (
+        <div className="truncate" title={legacyCategory}>
+          <span className="text-muted-foreground">legacy:</span>{" "}
+          {legacyCategory}
+        </div>
+      )}
+      <div className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+        Audit only · not final category
+      </div>
+    </div>
+  );
+}
+
+function getImportRowReason(row: ImportRowActionItem): string {
+  if (row.importStatus === "pending_duplicate") {
+    return row.duplicateOfTransactionId == null
+      ? "Potential duplicate retained for explicit review."
+      : `Potential duplicate of transaction #${row.duplicateOfTransactionId}.`;
   }
-  return <Badge variant="outline">{status}</Badge>;
+  if (row.importStatus === "skipped_duplicate") {
+    return "Skipped as duplicate and retained in import_rows for audit.";
+  }
+  if (row.transactionStatus === "pending") {
+    return "Pending/future transaction; normal commit keeps it out of transactions.";
+  }
+  if (row.importStatus === "imported") {
+    return row.transactionId == null
+      ? "Imported row."
+      : `Imported and linked to transaction #${row.transactionId}.`;
+  }
+  if (row.legacyRuleCategory?.trim()) {
+    return "Legacy/seed suggestion was retained for audit and blocked from auto-classification.";
+  }
+  if (row.classificationStatus === "needs_review") {
+    return "Manual classification is still required.";
+  }
+  return "Staged import row retained for audit.";
 }
 
 function TableState({ children }: { children: React.ReactNode }) {

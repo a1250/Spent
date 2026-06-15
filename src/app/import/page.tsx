@@ -57,6 +57,14 @@ import type {
   LearningRuleMatchType,
 } from "@/lib/types";
 import { ImportHealthReport } from "@/components/import/import-health-report";
+import {
+  CashFlowTypeBadge,
+  ClassificationStatusBadge,
+  ImportRowStatusBadge,
+  PnlImpactBadge,
+  RuleProvenanceBadge,
+  TransactionStatusBadge,
+} from "@/components/import/import-intelligence-badges";
 
 // ── Financial nature labels ───────────────────────────────────────────────────
 
@@ -77,12 +85,6 @@ const FINANCIAL_NATURE_LABELS: Record<FinancialNature, string> = {
   unknown: "לא ידוע",
 };
 
-const PNL_LABELS: Record<PnlImpact, string> = {
-  yes: "כן",
-  no: "לא",
-  maybe: "אולי",
-};
-
 const CASH_FLOW_LABELS: Record<CashFlowType, string> = {
   real_cash_in: "תזרים נכנס",
   real_cash_out: "תזרים יוצא",
@@ -98,36 +100,6 @@ const ADAPTER_LABELS: Record<ImportBatch["adapterKey"], string> = {
   "credit-card-cal": "CAL",
   "bank-checking-hebrew": "Bank checking",
 };
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: ImportRow["classificationStatus"] }) {
-  if (status === "needs_review") {
-    return (
-      <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-600 dark:text-amber-400">
-        <AlertCircle className="h-3 w-3" />
-        דורש בדיקה
-      </Badge>
-    );
-  }
-  if (status === "manually_approved") {
-    return (
-      <Badge variant="outline" className="gap-1 border-green-500/40 text-green-600 dark:text-green-400">
-        <CheckCircle2 className="h-3 w-3" />
-        אושר ידנית
-      </Badge>
-    );
-  }
-  if (status === "auto_classified") {
-    return (
-      <Badge variant="outline" className="gap-1 border-blue-500/40 text-blue-600 dark:text-blue-400">
-        <CheckCircle2 className="h-3 w-3" />
-        סווג אוטומטית
-      </Badge>
-    );
-  }
-  return <Badge variant="secondary">{status}</Badge>;
-}
 
 // ── Row edit dialog ───────────────────────────────────────────────────────────
 
@@ -531,6 +503,14 @@ function ReviewTable({
 }) {
   const [filter, setFilter] = useState<RowFilter>("all");
   const [editRow, setEditRow] = useState<ImportRow | null>(null);
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => getCategories(),
+  });
+  const categoryNames = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories]
+  );
 
   const displayed = filter === "needs_review"
     ? rows.filter((r) => r.classificationStatus === "needs_review" && !r.isDuplicate)
@@ -564,26 +544,16 @@ function ReviewTable({
       </div>
 
       <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[1480px] text-sm">
           <thead>
             <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
               <th className="px-3 py-2 text-start font-medium">תאריך</th>
               <th className="px-3 py-2 text-start font-medium">תיאור</th>
               <th className="px-3 py-2 text-end font-medium">סכום</th>
-              <th className="px-3 py-2 text-start font-medium">
-                <span className="flex items-center gap-1">
-                  קטגוריית מקור
-                  <span
-                    className="cursor-help text-amber-500"
-                    title="קטגוריה מהספק או מהאקסל הישן — לא הסיווג הסופי"
-                  >
-                    ⚠
-                  </span>
-                </span>
-              </th>
-              <th className="px-3 py-2 text-start font-medium">סיווג פיננסי</th>
-              <th className="px-3 py-2 text-center font-medium">P&L</th>
-              <th className="px-3 py-2 text-start font-medium">סטטוס</th>
+              <th className="px-3 py-2 text-start font-medium">מקור הקובץ</th>
+              <th className="px-3 py-2 text-start font-medium">Audit בלבד</th>
+              <th className="px-3 py-2 text-start font-medium">סיווג סופי</th>
+              <th className="px-3 py-2 text-start font-medium">סטטוס / Rule</th>
               {hasEditableRows && <th className="px-3 py-2" />}
             </tr>
           </thead>
@@ -672,43 +642,41 @@ function ReviewTable({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {row.sourceCategory || row.legacyCategory ? (
-                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-400">
-                      {row.sourceCategory ?? row.legacyCategory}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                  <ImportSourceDetails row={row} />
                 </td>
                 <td className="px-3 py-2">
-                  <span className="text-xs">
-                    {FINANCIAL_NATURE_LABELS[row.financialNature] ?? row.financialNature}
-                  </span>
+                  <ImportAuditDetails row={row} />
                 </td>
-                <td className="px-3 py-2 text-center">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                      row.pnlImpact === "yes"
-                        ? "bg-green-500/10 text-green-700 dark:text-green-400"
-                        : row.pnlImpact === "no"
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                    }`}
-                  >
-                    {PNL_LABELS[row.pnlImpact]}
-                  </span>
+                <td className="max-w-[260px] px-3 py-2">
+                  <div className="font-medium">
+                    {row.categoryId == null
+                      ? "ללא קטגוריה"
+                      : categoryNames.get(row.categoryId) ??
+                        `category #${row.categoryId}`}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {FINANCIAL_NATURE_LABELS[row.financialNature] ??
+                      row.financialNature}{" "}
+                    · {row.businessUnit ?? "unknown"}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <CashFlowTypeBadge type={row.cashFlowType} />
+                    <PnlImpactBadge impact={row.pnlImpact} />
+                  </div>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-col items-start gap-1">
-                    <StatusBadge status={row.classificationStatus} />
-                    {row.transactionStatus === "pending" && (
-                      <Badge
-                        variant="outline"
-                        className="border-violet-500/40 text-violet-600 dark:text-violet-400"
-                      >
-                        ממתינה
-                      </Badge>
-                    )}
+                    <ClassificationStatusBadge
+                      status={row.classificationStatus}
+                    />
+                    <ImportRowStatusBadge status={row.importStatus} />
+                    <TransactionStatusBadge status={row.transactionStatus} />
+                    <RuleProvenanceBadge
+                      ruleId={row.appliedRuleId}
+                      source={row.appliedRuleSource}
+                      confidence={row.appliedRuleConfidence}
+                      legacyRuleCategory={row.legacyRuleCategory}
+                    />
                   </div>
                 </td>
                 {hasEditableRows && (
@@ -838,7 +806,7 @@ function PendingTransactionsTable({
                     (row.cardLast4 ? `•••• ${row.cardLast4}` : "—")}
                 </td>
                 <td className="px-3 py-2">
-                  <Badge variant="secondary">{row.importStatus}</Badge>
+                  <ImportRowStatusBadge status={row.importStatus} />
                 </td>
                 <td className="px-3 py-2">
                   {row.importStatus === "pending" ? (
@@ -852,11 +820,9 @@ function PendingTransactionsTable({
                         : "Import pending"}
                     </Button>
                   ) : row.importStatus === "imported" ? (
-                    <Badge variant="outline">
-                      transaction #{row.transactionId}
-                    </Badge>
+                    <Badge variant="outline">transaction #{row.transactionId}</Badge>
                   ) : (
-                    <Badge variant="secondary">{row.importStatus}</Badge>
+                    <ImportRowStatusBadge status={row.importStatus} />
                   )}
                 </td>
               </tr>
@@ -1126,9 +1092,94 @@ function UploadZone({
         )}
       </div>
 
+      {mutation.isError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium">
+                {getImportErrorTitle(mutation.error)}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {mutation.error instanceof Error
+                  ? mutation.error.message
+                  : "The file could not be imported."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BatchHistoryList onSelect={onUploaded} />
     </div>
   );
+}
+
+function ImportSourceDetails({ row }: { row: ImportRow }) {
+  const sourceParts = [
+    row.sourceType,
+    row.sourceSection,
+    row.sourceSheetName ? `sheet: ${row.sourceSheetName}` : null,
+  ].filter(Boolean);
+
+  return (
+    <div className="max-w-[240px] space-y-1 text-xs">
+      <div className="font-medium">
+        {sourceParts.length > 0 ? sourceParts.join(" · ") : "מקור לא זמין"}
+      </div>
+      {row.billingDate && (
+        <div className="text-muted-foreground">
+          billing date: {row.billingDate}
+        </div>
+      )}
+      {row.valueDate && row.valueDate !== row.date && (
+        <div className="text-muted-foreground">value date: {row.valueDate}</div>
+      )}
+    </div>
+  );
+}
+
+function ImportAuditDetails({ row }: { row: ImportRow }) {
+  const sourceCategory = row.sourceCategory?.trim();
+  const legacyCategory = row.legacyCategory?.trim();
+
+  if (!sourceCategory && !legacyCategory) {
+    return <span className="text-xs text-muted-foreground">אין metadata</span>;
+  }
+
+  return (
+    <div className="max-w-[220px] space-y-1 text-xs">
+      {sourceCategory && (
+        <div className="truncate" title={sourceCategory}>
+          <span className="text-muted-foreground">source:</span>{" "}
+          {sourceCategory}
+        </div>
+      )}
+      {legacyCategory && legacyCategory !== sourceCategory && (
+        <div className="truncate" title={legacyCategory}>
+          <span className="text-muted-foreground">legacy:</span>{" "}
+          {legacyCategory}
+        </div>
+      )}
+      <div className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+        Audit only · not final category
+      </div>
+    </div>
+  );
+}
+
+function getImportErrorTitle(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("unsupported_isracard_profile")) {
+    return "Isracard file recognized, but this profile is not supported yet";
+  }
+  if (message.toLowerCase().includes("unsupported")) {
+    return "Unsupported import file";
+  }
+  return "Import could not be completed";
 }
 
 // ── Batch history ─────────────────────────────────────────────────────────────

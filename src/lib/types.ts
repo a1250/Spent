@@ -251,7 +251,16 @@ export interface DataQualitySummary {
 
 export interface NeedsReviewTransaction extends TransactionWithCategory {
   legacyCategory: string | null;
+  legacyRuleCategory: string | null;
   sourceFilename: string | null;
+  adapterKey: ImportAdapterKey | null;
+  sourceType: ImportRowSourceType | null;
+  sourceSection: string | null;
+  sourceSheetName: string | null;
+  importStatus: ImportRowStatus | null;
+  appliedRuleId: number | null;
+  appliedRuleConfidence: number | null;
+  appliedRuleSource: RuleSource | null;
   daysPending: number;
 }
 
@@ -269,8 +278,24 @@ export interface ImportRowActionItem {
   importStatus: ImportRowStatus;
   transactionStatus: "completed" | "pending";
   classificationStatus: ClassificationStatus;
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  categoryId: number | null;
+  categoryName: string | null;
+  categoryColor: string | null;
+  businessUnit: BusinessUnit | null;
   legacyCategory: string | null;
+  legacyRuleCategory: string | null;
   sourceCategory: string | null;
+  sourceType: ImportRowSourceType;
+  sourceSection: string | null;
+  sourceSheetName: string | null;
+  billingDate: string | null;
+  valueDate: string | null;
+  appliedRuleId: number | null;
+  appliedRuleConfidence: number | null;
+  appliedRuleSource: RuleSource | null;
   transactionId: number | null;
   duplicateOfTransactionId: number | null;
   isDuplicate: boolean;

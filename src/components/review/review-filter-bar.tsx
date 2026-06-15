@@ -41,6 +41,7 @@ export const EMPTY_FILTERS: ReviewFilters = {
 const FINANCIAL_NATURES: [string, string][] = [
   ["operating_income", "הכנסה תפעולית"],
   ["operating_expense", "הוצאה תפעולית"],
+  ["credit_card_payment", "⚠ תשלום כרטיס אשראי"],
   ["refund", "זיכוי"],
   ["working_capital", "הון חוזר"],
   ["internal_transfer", "העברה פנימית"],

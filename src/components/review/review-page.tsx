@@ -19,6 +19,7 @@ import {
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionLearningDialog } from "@/components/transactions/transaction-learning-dialog";
 import { CoverageBanner } from "./coverage-banner";
+import { CardPaymentWarningSection } from "./card-payment-warning-section";
 import { ReviewFilterBar, EMPTY_FILTERS } from "./review-filter-bar";
 import {
   ReviewCounterpartyGroups,
@@ -255,6 +256,9 @@ export function ReviewPage() {
         {summaryQuery.data && (
           <CoverageBanner summary={summaryQuery.data} />
         )}
+
+        {/* Credit card payment / double-count risk warning */}
+        <CardPaymentWarningSection allRows={allRows} />
 
         {/* Data quality quick links */}
         <div className="flex flex-wrap items-center gap-2">

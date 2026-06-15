@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import type { AdapterParseResult, ParsedImportRow } from "../types";
 import { parseImportDate } from "../shared/dates";
 import { findHeaderRow, normalizeHeader } from "../shared/headers";
+import { detectCardPayment } from "@/lib/card-payment-detector";
 
 export const BANK_CHECKING_SHEET = "עובר ושב";
 export const BANK_CHECKING_HEADERS = [
@@ -102,6 +103,8 @@ function parseRows(
         ? asText(raw[executionChannelIndex])
         : null;
 
+    const cardDetection = detectCardPayment(description, signedAmount);
+
     rows.push({
       rawRowNumber: index + 1,
       rawDate: String(raw[dateIndex] ?? ""),
@@ -116,6 +119,9 @@ function parseRows(
         accountLabel: account.label,
         accountNumberMasked: account.maskedNumber,
         sourceRow: raw,
+        cardPaymentDetected: cardDetection.detected,
+        cardPaymentIssuer: cardDetection.issuer,
+        cardPaymentReason: cardDetection.reason,
       },
       date,
       amount: Math.abs(signedAmount),
@@ -138,13 +144,17 @@ function parseRows(
       currency: "ILS",
       transactionStatus: isPending ? "pending" : "completed",
       notes: feeOrChannelNote,
-      financialNature: "unknown",
+      financialNature: cardDetection.detected
+        ? cardDetection.suggestedFinancialNature
+        : "unknown",
       cashFlowType: isPending
         ? "pending"
         : direction === "income"
           ? "real_cash_in"
           : "real_cash_out",
-      pnlImpact: "maybe",
+      pnlImpact: cardDetection.detected
+        ? cardDetection.suggestedPnlImpact
+        : "maybe",
       legacyCategory: null,
       sourceSheetName: BANK_CHECKING_SHEET,
       valueDate,

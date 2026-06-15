@@ -11,6 +11,7 @@ export interface Workspace {
 export type FinancialNature =
   | "operating_income"
   | "operating_expense"
+  | "credit_card_payment"
   | "refund"
   | "working_capital"
   | "internal_transfer"

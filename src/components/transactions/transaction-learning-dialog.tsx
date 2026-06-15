@@ -41,6 +41,7 @@ import type {
 const FINANCIAL_NATURE_LABELS: Record<FinancialNature, string> = {
   operating_income: "הכנסה תפעולית",
   operating_expense: "הוצאה תפעולית",
+  credit_card_payment: "תשלום כרטיס אשראי",
   refund: "זיכוי / החזר",
   working_capital: "הון חוזר",
   internal_transfer: "העברה פנימית",

@@ -26,12 +26,12 @@ PASS=0
 FAIL=0
 
 # ── Expected live DB baseline ────────────────────────────────────────────────
-# Post-Phase-2U.8 baseline; update only after an approved data checkpoint.
+# Post-Phase-2U.9 baseline; update only after an approved data checkpoint.
 EXPECTED_TOTAL_TRANSACTIONS=1095
-EXPECTED_MANUALLY_APPROVED=700
-EXPECTED_NEEDS_REVIEW=385
+EXPECTED_MANUALLY_APPROVED=704
+EXPECTED_NEEDS_REVIEW=381
 EXPECTED_AUTO_CLASSIFIED=10
-EXPECTED_USER_RULES=40
+EXPECTED_USER_RULES=41
 EXPECTED_LEGACY_RULES=611
 
 # ── Colors ───────────────────────────────────────────────────────────────────

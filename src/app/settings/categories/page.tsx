@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { Archive, ChevronRight, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -35,8 +35,8 @@ import type { Category, CategoryKind, CategoryWithData } from "@/lib/types";
 export default function CategoriesSettingsPage() {
   const { from, to } = getMonthRange();
   const { data: categories } = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => getCategories(),
+    queryKey: ["categories", { includeArchived: true, includeCounts: true }],
+    queryFn: () => getCategories(undefined, { includeArchived: true, includeCounts: true }),
   });
   const { data: summary } = useQuery({
     queryKey: ["summary", from, to],
@@ -46,6 +46,7 @@ export default function CategoriesSettingsPage() {
   const [search, setSearch] = useState("");
   const [activeKind, setActiveKind] = useState<CategoryKind>("expense");
   const [openId, setOpenId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const dataByCategoryId = useMemo(() => {
     const m = new Map<number, CategoryWithData>();
@@ -53,16 +54,22 @@ export default function CategoriesSettingsPage() {
     return m;
   }, [summary]);
 
+  const archivedCount = useMemo(
+    () => categories?.filter((c) => c.kind === activeKind && c.isArchived).length ?? 0,
+    [categories, activeKind]
+  );
+
   const filtered = useMemo(() => {
     if (!categories) return [];
     return categories
       .filter((c) => c.kind === activeKind)
+      .filter((c) => c.isArchived === showArchived)
       .filter((c) =>
         search.trim().length === 0
           ? true
           : c.name.toLowerCase().includes(search.toLowerCase())
       );
-  }, [categories, activeKind, search]);
+  }, [categories, activeKind, search, showArchived]);
 
   const { parents, childrenByParent, orphans } = useMemo(() => {
     const parentIds = new Set<number>();
@@ -119,7 +126,19 @@ export default function CategoriesSettingsPage() {
               className="ps-8"
             />
           </div>
-          <NewGroupDialog kind={activeKind} />
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              showArchived
+                ? "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                : "border-border bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Archive className="h-3 w-3" />
+            Archived{archivedCount > 0 ? ` (${archivedCount})` : ""}
+          </button>
+          {!showArchived && <NewGroupDialog kind={activeKind} />}
         </div>
 
         {!categories ? (
@@ -255,6 +274,7 @@ function CategoryRow({
   onSelect: () => void;
 }) {
   const description = category.description?.trim();
+  const lifetimeTxCount = category.lifetimeTransactionCount;
   return (
     <li>
       <button
@@ -269,21 +289,30 @@ function CategoryRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="truncate">{category.name}</span>
+            {category.isArchived && (
+              <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                archived
+              </span>
+            )}
           </div>
           {description ? (
             <div className="mt-0.5 truncate text-xs text-muted-foreground">
               {description}
             </div>
+          ) : lifetimeTxCount != null && lifetimeTxCount > 0 ? (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {lifetimeTxCount.toLocaleString()} transactions
+            </div>
           ) : null}
         </div>
         <div className="hidden shrink-0 text-end sm:block">
-          {data ? (
+          {!category.isArchived && data ? (
             <div className="text-xs tabular-nums text-muted-foreground">
               ₪{Math.round(data.spent).toLocaleString("en-IL")} spent
             </div>
           ) : null}
         </div>
-        <BudgetChip category={category} data={data} />
+        {!category.isArchived && <BudgetChip category={category} data={data} />}
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60 rtl:rotate-180" />
       </button>
     </li>

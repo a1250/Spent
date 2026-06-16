@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle, Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -34,6 +34,8 @@ import {
 import {
   deleteCategory,
   getCategories,
+  renameCategory,
+  setCategoryArchived,
   setCategoryParent,
   updateBudget,
   updateCategoryBudgetMode,
@@ -57,8 +59,8 @@ export function CategoryDetailSheet({
 }: CategoryDetailSheetProps) {
   const open = categoryId !== null;
   const { data: allCategories } = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => getCategories(),
+    queryKey: ["categories", { includeArchived: true, includeCounts: true }],
+    queryFn: () => getCategories(undefined, { includeArchived: true, includeCounts: true }),
     enabled: open,
   });
   const category = useMemo(
@@ -102,7 +104,7 @@ function Body({
   onClose: () => void;
 }) {
   const sameKind = allCategories.filter(
-    (c) => c.kind === category.kind && c.id !== category.id
+    (c) => c.kind === category.kind && c.id !== category.id && !c.isArchived
   );
   const eligibleParents = sameKind
     .filter((c) => c.parentId == null)
@@ -138,17 +140,17 @@ function Body({
             <SheetDescription className="mt-0.5">
               {category.kind === "expense" ? "Expense" : "Income"} category
               {data?.parentName ? ` · in ${data.parentName}` : ""}
+              {category.isArchived ? " · Archived" : ""}
             </SheetDescription>
           </div>
         </div>
+        <UsageSummary category={category} />
       </SheetHeader>
 
       <div className="flex-1 space-y-6 p-6">
-        {!category.parentId && data?.isParent !== true ? (
-          <BudgetSection category={category} data={data} />
-        ) : (
-          <BudgetSection category={category} data={data} />
-        )}
+        <RenameSection category={category} />
+
+        <BudgetSection category={category} data={data} />
 
         <GroupSection
           category={category}
@@ -157,7 +159,7 @@ function Body({
 
         <DescriptionSection category={category} />
 
-        <DeleteCategorySection
+        <DangerZoneSection
           category={category}
           transactionCount={data?.transactionCount ?? 0}
           isParentGroup={isParentGroup}
@@ -166,6 +168,116 @@ function Body({
         />
       </div>
     </div>
+  );
+}
+
+function UsageSummary({ category }: { category: Category }) {
+  const txCount = category.lifetimeTransactionCount ?? 0;
+  const ruleCount = category.ruleCount ?? 0;
+  if (txCount === 0 && ruleCount === 0) return null;
+  return (
+    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      {txCount > 0 && (
+        <span>
+          <span className="font-semibold tabular-nums text-foreground">{txCount.toLocaleString()}</span>{" "}
+          {txCount === 1 ? "transaction" : "transactions"}
+        </span>
+      )}
+      {txCount > 0 && ruleCount > 0 && <span>·</span>}
+      {ruleCount > 0 && (
+        <span>
+          <span className="font-semibold tabular-nums text-foreground">{ruleCount}</span>{" "}
+          {ruleCount === 1 ? "active rule" : "active rules"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RenameSection({ category }: { category: Category }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(category.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setValue(category.name);
+    setEditing(false);
+  }, [category.name]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const mutation = useMutation({
+    mutationFn: (name: string) => renameCategory(category.id, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success("Category renamed");
+      setEditing(false);
+    },
+    onError: (err: Error) => {
+      if (err.message.includes("409") || err.message.includes("already exists")) {
+        toast.error("A category with that name already exists.");
+      } else {
+        toast.error("Couldn't rename category.");
+      }
+      setValue(category.name);
+      setEditing(false);
+    },
+  });
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === category.name) {
+      setValue(category.name);
+      setEditing(false);
+      return;
+    }
+    mutation.mutate(trimmed);
+  };
+
+  return (
+    <section>
+      <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        Name
+      </div>
+      <div className="mt-3 rounded-xl border border-border bg-card p-4">
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <Input
+              ref={inputRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commit(); }
+                if (e.key === "Escape") { setValue(category.name); setEditing(false); }
+              }}
+              disabled={mutation.isPending}
+              className="h-8 text-sm"
+            />
+            <Button size="sm" onClick={commit} disabled={mutation.isPending}>
+              Save
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">{category.name}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => setEditing(true)}
+              disabled={category.isArchived}
+            >
+              <Pencil className="h-3 w-3" />
+              Rename
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -184,7 +296,7 @@ function parseDeleteCategoryError(message: string): string[] | null {
   return null;
 }
 
-function DeleteCategorySection({
+function DangerZoneSection({
   category,
   transactionCount,
   isParentGroup,
@@ -200,9 +312,25 @@ function DeleteCategorySection({
   const t = useTranslations("settings.categories");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const mutation = useMutation({
+  const archiveMutation = useMutation({
+    mutationFn: (archived: boolean) => setCategoryArchived(category.id, archived),
+    onSuccess: (_, archived) => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["summary"] });
+      toast.success(archived ? "Category archived" : "Category restored");
+    },
+    onError: (err: Error) => {
+      if (err.message.includes("has-children") || err.message.includes("409")) {
+        toast.error("Archive all sub-categories before archiving this group.");
+      } else {
+        toast.error("Couldn't update archive status.");
+      }
+    },
+  });
+
+  const deleteMutation = useMutation({
     mutationFn: () => deleteCategory(category.id),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
@@ -211,7 +339,7 @@ function DeleteCategorySection({
       toast.success(
         t("deletedToast", { count: result.unassignedTransactionCount })
       );
-      setOpen(false);
+      setDeleteOpen(false);
       onDeleted();
     },
     onError: (err: Error) => {
@@ -233,28 +361,68 @@ function DeleteCategorySection({
     },
   });
 
+  const lifetimeTxCount = category.lifetimeTransactionCount ?? 0;
+
   return (
     <>
-      <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+      <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium">{t("deleteTitle")}</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {isParentGroup ? t("deleteParentHint") : t("deleteHint")}
-            </p>
-            {isParentGroup && childCategories.length > 0 ? (
-              <ul className="mt-2 list-disc space-y-0.5 ps-4 text-xs text-foreground/80">
-                {childCategories.map((child) => (
-                  <li key={child.id}>{child.name}</li>
-                ))}
-              </ul>
-            ) : null}
+          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+          <div className="text-sm font-medium">Danger zone</div>
+        </div>
+
+        {/* Archive / Restore */}
+        <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">
+                {category.isArchived ? "Restore category" : "Archive category"}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {category.isArchived
+                  ? "Make this category available again for new classifications."
+                  : "Hide from new classifications. Historical transactions are kept."}
+              </p>
+              {isParentGroup && !category.isArchived && childCategories.length > 0 && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Archive all sub-categories first: {childCategories.map((c) => c.name).join(", ")}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={() => archiveMutation.mutate(!category.isArchived)}
+              disabled={archiveMutation.isPending || (!category.isArchived && isParentGroup)}
+            >
+              {category.isArchived ? (
+                <><ArchiveRestore className="h-3.5 w-3.5" />Restore</>
+              ) : (
+                <><Archive className="h-3.5 w-3.5" />Archive</>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Delete */}
+        <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">Delete permanently</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {isParentGroup
+                  ? t("deleteParentHint")
+                  : lifetimeTxCount > 0
+                    ? `${lifetimeTxCount.toLocaleString()} transactions will be unassigned.`
+                    : "No transactions are assigned to this category."}
+              </p>
+            </div>
             <Button
               variant="destructive"
               size="sm"
-              className="mt-3 gap-1.5"
-              onClick={() => setOpen(true)}
+              className="shrink-0 gap-1.5"
+              onClick={() => setDeleteOpen(true)}
               disabled={isParentGroup}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -264,7 +432,7 @@ function DeleteCategorySection({
         </div>
       </section>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -275,15 +443,15 @@ function DeleteCategorySection({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
               {tCommon("cancel")}
             </Button>
             <Button
               variant="destructive"
-              onClick={() => mutation.mutate()}
-              disabled={mutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
             >
-              {mutation.isPending ? tCommon("deleting") : t("deleteButton")}
+              {deleteMutation.isPending ? tCommon("deleting") : t("deleteButton")}
             </Button>
           </DialogFooter>
         </DialogContent>

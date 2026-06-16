@@ -14,8 +14,10 @@ export async function GET(request: Request) {
   const kind: CategoryKind | undefined =
     raw === "expense" || raw === "income" ? raw : undefined;
   const leavesOnly = searchParams.get("leavesOnly") === "1";
+  const includeArchived = searchParams.get("includeArchived") === "1";
+  const includeCounts = searchParams.get("includeCounts") === "1";
   return NextResponse.json(
-    getAllCategories(workspaceId, kind, { leavesOnly })
+    getAllCategories(workspaceId, kind, { leavesOnly, includeArchived, includeCounts })
   );
 }
 

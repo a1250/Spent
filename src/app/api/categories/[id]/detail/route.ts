@@ -44,7 +44,7 @@ export async function GET(
   const prevFrom = toLocalISODate(prevMonthStart);
   const prevTo = toLocalISODate(prevMonthEnd);
 
-  const allCategories = getAllCategories(workspaceId);
+  const allCategories = getAllCategories(workspaceId, undefined, { includeArchived: true });
   const category = allCategories.find((c) => c.id === categoryId);
   if (!category) {
     return NextResponse.json({ error: "not found" }, { status: 404 });

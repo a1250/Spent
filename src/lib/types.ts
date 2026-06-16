@@ -745,6 +745,9 @@ export interface Category {
   kind: CategoryKind;
   budgetMode: BudgetMode;
   description: string | null;
+  isArchived: boolean;
+  lifetimeTransactionCount?: number;
+  ruleCount?: number;
 }
 
 export type CategoryViewMode = "collapsed" | "expanded";

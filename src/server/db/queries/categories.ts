@@ -4,41 +4,62 @@ import { getDb } from "../index";
 import type { Category, CategoryKind } from "@/lib/types";
 
 const CATEGORY_COLUMNS =
-  "id, parent_id as parentId, name, color, icon, kind, budget_mode as budgetMode, description";
+  "id, parent_id as parentId, name, color, icon, kind, budget_mode as budgetMode, description, is_archived as isArchived";
+
+const CATEGORY_COLUMNS_ALIASED =
+  "c.id, c.parent_id as parentId, c.name, c.color, c.icon, c.kind, c.budget_mode as budgetMode, c.description, c.is_archived as isArchived";
 
 export function getAllCategories(
   workspaceId: number,
   kind?: CategoryKind,
-  opts?: { leavesOnly?: boolean }
+  opts?: { leavesOnly?: boolean; includeArchived?: boolean; includeCounts?: boolean }
 ): Category[] {
   const leavesOnly = opts?.leavesOnly === true;
-  const whereParts: string[] = ["workspace_id = ?"];
+  const includeArchived = opts?.includeArchived === true;
+  const includeCounts = opts?.includeCounts === true;
+
+  const whereParts: string[] = ["c.workspace_id = ?"];
   const params: unknown[] = [workspaceId];
 
   if (kind) {
-    whereParts.push("kind = ?");
+    whereParts.push("c.kind = ?");
     params.push(kind);
+  }
+  if (!includeArchived) {
+    whereParts.push("c.is_archived = 0");
   }
   if (leavesOnly) {
     whereParts.push(
-      "id NOT IN (SELECT parent_id FROM categories WHERE parent_id IS NOT NULL)"
+      "c.id NOT IN (SELECT parent_id FROM categories WHERE parent_id IS NOT NULL AND workspace_id = ?)"
     );
+    params.push(workspaceId);
   }
 
-  const sql = `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE ${whereParts.join(" AND ")} ORDER BY name`;
-  return getDb().prepare(sql).all(...params) as Category[];
+  const countCols = includeCounts
+    ? `, (SELECT COUNT(*) FROM transactions t WHERE t.workspace_id = c.workspace_id AND t.category_id = c.id) as lifetimeTransactionCount` +
+      `, (SELECT COUNT(*) FROM classification_rules r WHERE r.workspace_id = c.workspace_id AND r.category_id = c.id AND r.is_active = 1) as ruleCount`
+    : "";
+
+  const sql = `SELECT ${CATEGORY_COLUMNS_ALIASED}${countCols} FROM categories c WHERE ${whereParts.join(" AND ")} ORDER BY c.name`;
+  const rows = getDb().prepare(sql).all(...params) as (Category & { isArchived: number | boolean })[];
+  return rows.map((r) => ({ ...r, isArchived: Boolean(r.isArchived) }));
+}
+
+function coerceCategory(raw: Category | undefined): Category | null {
+  if (!raw) return null;
+  return { ...raw, isArchived: Boolean(raw.isArchived) };
 }
 
 export function getCategoryById(
   workspaceId: number,
   id: number
 ): Category | null {
-  return (
-    (getDb()
+  return coerceCategory(
+    getDb()
       .prepare(
         `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE workspace_id = ? AND id = ?`
       )
-      .get(workspaceId, id) as Category | undefined) ?? null
+      .get(workspaceId, id) as Category | undefined
   );
 }
 
@@ -46,12 +67,12 @@ export function getCategoryByName(
   workspaceId: number,
   name: string
 ): Category | null {
-  return (
-    (getDb()
+  return coerceCategory(
+    getDb()
       .prepare(
         `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE workspace_id = ? AND name = ? COLLATE NOCASE`
       )
-      .get(workspaceId, name) as Category | undefined) ?? null
+      .get(workspaceId, name) as Category | undefined
   );
 }
 
@@ -244,6 +265,7 @@ export function createParentCategory(
     kind: input.kind,
     budgetMode: "budgeted",
     description,
+    isArchived: false,
   };
 }
 
@@ -346,6 +368,7 @@ export function ensureCategory(
     kind,
     budgetMode: "budgeted",
     description: null,
+    isArchived: false,
   };
 }
 
@@ -365,6 +388,68 @@ export function listCategoryChildren(
        ORDER BY name COLLATE NOCASE`
     )
     .all(workspaceId, parentId) as CategoryChildRef[];
+}
+
+export type RenameCategoryResult =
+  | { ok: true; category: Category }
+  | { ok: false; reason: "not-found" | "conflict" | "empty" };
+
+export function updateCategoryName(
+  workspaceId: number,
+  id: number,
+  name: string
+): RenameCategoryResult {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, reason: "empty" };
+
+  const existing = getCategoryById(workspaceId, id);
+  if (!existing) return { ok: false, reason: "not-found" };
+
+  try {
+    getDb()
+      .prepare(
+        "UPDATE categories SET name = ? WHERE workspace_id = ? AND id = ?"
+      )
+      .run(trimmed, workspaceId, id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("UNIQUE")) return { ok: false, reason: "conflict" };
+    throw err;
+  }
+
+  const updated = getCategoryById(workspaceId, id);
+  return { ok: true, category: updated as Category };
+}
+
+export type ArchiveCategoryResult =
+  | { ok: true }
+  | { ok: false; reason: "not-found" | "has-children" };
+
+export function archiveCategory(
+  workspaceId: number,
+  id: number
+): ArchiveCategoryResult {
+  const category = getCategoryById(workspaceId, id);
+  if (!category) return { ok: false, reason: "not-found" };
+
+  const children = listCategoryChildren(workspaceId, id);
+  if (children.length > 0) return { ok: false, reason: "has-children" };
+
+  getDb()
+    .prepare(
+      "UPDATE categories SET is_archived = 1 WHERE workspace_id = ? AND id = ?"
+    )
+    .run(workspaceId, id);
+  return { ok: true };
+}
+
+export function unarchiveCategory(workspaceId: number, id: number): boolean {
+  const result = getDb()
+    .prepare(
+      "UPDATE categories SET is_archived = 0 WHERE workspace_id = ? AND id = ?"
+    )
+    .run(workspaceId, id);
+  return result.changes > 0;
 }
 
 export type DeleteCategoryResult =

@@ -306,11 +306,13 @@ export function getActivity() {
 
 export function getCategories(
   kind?: CategoryKindFilter,
-  options?: { leavesOnly?: boolean }
+  options?: { leavesOnly?: boolean; includeArchived?: boolean; includeCounts?: boolean }
 ) {
   const params = new URLSearchParams();
   if (kind) params.set("kind", kind);
   if (options?.leavesOnly) params.set("leavesOnly", "1");
+  if (options?.includeArchived) params.set("includeArchived", "1");
+  if (options?.includeCounts) params.set("includeCounts", "1");
   const query = params.size > 0 ? `?${params}` : "";
   return fetchJSON<Category[]>(`/api/categories${query}`);
 }
@@ -500,6 +502,22 @@ export function deleteCategory(categoryId: number) {
     unassignedTransactionCount: number;
   }>(`/api/categories/${categoryId}`, {
     method: "DELETE",
+  });
+}
+
+export function renameCategory(categoryId: number, name: string) {
+  return fetchJSON<{ success: boolean }>(`/api/categories/${categoryId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function setCategoryArchived(categoryId: number, archived: boolean) {
+  return fetchJSON<{ success: boolean }>(`/api/categories/${categoryId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived }),
   });
 }
 

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import {
+  archiveCategory,
   deleteCategory,
   setCategoryParent,
+  unarchiveCategory,
   updateCategoryBudgetMode,
   updateCategoryDescription,
+  updateCategoryName,
 } from "@/server/db/queries/categories";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 
@@ -31,6 +34,8 @@ export async function PATCH(
     budgetMode?: unknown;
     description?: unknown;
     parentId?: unknown;
+    name?: unknown;
+    archived?: unknown;
   };
 
   let applied = false;
@@ -97,6 +102,60 @@ export async function PATCH(
         { error: result.reason },
         { status }
       );
+    }
+    applied = true;
+  }
+
+  if (typed.name !== undefined) {
+    if (typeof typed.name !== "string" || typed.name.trim().length === 0) {
+      return NextResponse.json(
+        { error: "name must be a non-empty string" },
+        { status: 400 }
+      );
+    }
+    const result = updateCategoryName(workspaceId, categoryId, typed.name);
+    if (!result.ok) {
+      if (result.reason === "not-found") {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
+      if (result.reason === "conflict") {
+        return NextResponse.json(
+          { error: "a category with this name already exists" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: result.reason }, { status: 400 });
+    }
+    applied = true;
+  }
+
+  if (typed.archived !== undefined) {
+    if (typeof typed.archived !== "boolean") {
+      return NextResponse.json(
+        { error: "archived must be a boolean" },
+        { status: 400 }
+      );
+    }
+    if (typed.archived) {
+      const result = archiveCategory(workspaceId, categoryId);
+      if (!result.ok) {
+        if (result.reason === "not-found") {
+          return NextResponse.json({ error: "not found" }, { status: 404 });
+        }
+        return NextResponse.json(
+          {
+            error: "has-children",
+            message:
+              "Archive all sub-categories before archiving this group.",
+          },
+          { status: 409 }
+        );
+      }
+    } else {
+      const ok = unarchiveCategory(workspaceId, categoryId);
+      if (!ok) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
     }
     applied = true;
   }

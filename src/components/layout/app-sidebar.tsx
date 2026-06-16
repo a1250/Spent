@@ -12,6 +12,7 @@ import {
   FileChartColumn,
   ChartNoAxesCombined,
   Building2,
+  CalendarDays,
   Landmark,
   Settings as SettingsIcon,
   Star,
@@ -91,6 +92,12 @@ const NAV: NavDef[] = [
     labelKey: "businessUnits",
     Icon: Building2,
     match: (p: string) => p.startsWith("/reports/business-units"),
+  },
+  {
+    href: "/reports/monthly",
+    labelKey: "monthlyBreakdown",
+    Icon: CalendarDays,
+    match: (p: string) => p.startsWith("/reports/monthly"),
   },
 ];
 

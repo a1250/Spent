@@ -1415,3 +1415,56 @@ export interface ExcludedMerchant {
   merchantKey: string;
   createdAt: string;
 }
+
+// ── Monthly breakdown report ─────────────────────────────────────────────────
+
+export interface MonthlyBreakdownCategoryLine {
+  categoryId: number | null;
+  parentName: string | null;
+  categoryName: string;
+  amount: number;
+  transactionCount: number;
+}
+
+export interface MonthlyBreakdownNatureLine {
+  financialNature: FinancialNature;
+  amount: number;
+  transactionCount: number;
+}
+
+export interface MonthlyBreakdownBusinessUnitLine {
+  businessUnit: string;
+  netPnL: number;
+  uncertainPnL: number;
+  transactionCount: number;
+}
+
+export interface MonthlyBreakdownNeedsReviewRow {
+  id: number;
+  date: string;
+  description: string;
+  counterparty: string | null;
+  chargedAmount: number;
+  financialNature: FinancialNature;
+  categoryName: string | null;
+  businessUnit: string | null;
+}
+
+export interface MonthlyBreakdown {
+  month: string;
+  availableMonths: string[];
+  pnl: {
+    operatingRevenue: number;
+    refunds: number;
+    operatingExpenses: number;
+    taxes: number;
+    netPnL: number;
+    uncertainPnL: number;
+  };
+  coverage: DataQualitySummary;
+  categoryExpenseBreakdown: MonthlyBreakdownCategoryLine[];
+  incomeBreakdown: MonthlyBreakdownNatureLine[];
+  nonPnlMovements: MonthlyBreakdownNatureLine[];
+  businessUnitBreakdown: MonthlyBreakdownBusinessUnitLine[];
+  needsReviewTop10: MonthlyBreakdownNeedsReviewRow[];
+}

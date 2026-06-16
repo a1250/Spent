@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Building2,
+  CalendarDays,
   ChartNoAxesCombined,
   FileChartColumn,
   ListChecks,
@@ -297,6 +298,28 @@ export function ReportsHubPage() {
                 : "No pending duplicate warning."
             }
           />
+
+          <ReportCard
+            href="/reports/monthly"
+            eyebrow="Monthly deep-dive"
+            title="Monthly Breakdown"
+            description="Single-month view: P&L by category, income breakdown, non-P&L movements, business unit split, and needs-review summary."
+            icon={CalendarDays}
+            accent="indigo"
+            metric={
+              quality
+                ? `${quality.coverageByCount.toFixed(1)}%`
+                : "Loading..."
+            }
+            metricLabel="Classification coverage by count"
+            note={
+              quality
+                ? `${integer.format(quality.needsReviewTransactions)} rows pending review`
+                : "Coverage loading"
+            }
+            warning="Needs-review rows are excluded from all financial totals."
+            preview
+          />
         </section>
 
         <section className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -375,6 +398,10 @@ const ACCENTS = {
   rose: {
     icon: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
     line: "bg-rose-500",
+  },
+  indigo: {
+    icon: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+    line: "bg-indigo-500",
   },
 };
 

@@ -32,6 +32,7 @@ import type {
   BusinessUnitDashboard,
   RuleEffectivenessReport,
   DataQualityDashboard,
+  MonthlyBreakdown,
 } from "./types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
@@ -918,4 +919,9 @@ export function getRuleEffectivenessReport() {
 
 export function getDataQualityDashboard() {
   return fetchJSON<DataQualityDashboard>("/api/reports/data-quality");
+}
+
+export function getMonthlyBreakdown(month?: string) {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJSON<MonthlyBreakdown>(`/api/reports/monthly${query}`);
 }

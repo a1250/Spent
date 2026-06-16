@@ -49,6 +49,15 @@ function providerForSource(sourceType: ImportRowSourceType): string {
   return sourceType === "legacy_excel" ? "legacy_import" : sourceType;
 }
 
+interface DedupHashes {
+  primaryHash: string;
+  // Cross-adapter fallback: replicates the legacy_excel hash formula (local charged
+  // amount, no sourceIdentity) so that rows previously imported via legacy_excel are
+  // recognised as duplicates even when re-imported through an adapter that uses FX
+  // original amounts or extra sourceIdentity fields. Only set for non-legacy adapters.
+  legacyFallbackHash: string | null;
+}
+
 function dedupHashForRow(
   parsed: ParsedImportRow,
   normalized: {
@@ -57,14 +66,17 @@ function dedupHashForRow(
     cleanDescription: string;
     direction: string;
   }
-): string {
+): DedupHashes {
   if (parsed.sourceType === "legacy_excel") {
-    return computeDedupHash(
-      normalized.date,
-      normalized.amount,
-      normalized.cleanDescription,
-      normalized.direction
-    );
+    return {
+      primaryHash: computeDedupHash(
+        normalized.date,
+        normalized.amount,
+        normalized.cleanDescription,
+        normalized.direction
+      ),
+      legacyFallbackHash: null,
+    };
   }
 
   const sourceIdentity = [
@@ -79,13 +91,22 @@ function dedupHashForRow(
     sourceIdentity.push(parsed.reference ?? "", parsed.valueDate ?? "");
   }
 
-  return computeDedupHash(
+  const primaryHash = computeDedupHash(
     normalized.date,
     parsed.originalAmount ?? normalized.amount,
     normalized.cleanDescription,
     normalized.direction,
     sourceIdentity
   );
+
+  const legacyFallbackHash = computeDedupHash(
+    normalized.date,
+    normalized.amount,
+    normalized.cleanDescription,
+    normalized.direction
+  );
+
+  return { primaryHash, legacyFallbackHash };
 }
 
 export interface StageResult {
@@ -208,12 +229,19 @@ export async function parseAndStageFile(
           cleanDescription: normalized.cleanDescription,
         });
 
-        const dedupHash = dedupHashForRow(parsed, normalized);
-        const dedup = checkDuplicate(workspaceId, dedupHash);
+        const { primaryHash, legacyFallbackHash } = dedupHashForRow(parsed, normalized);
+        const primaryDedup = checkDuplicate(workspaceId, primaryHash);
+        const dedup =
+          primaryDedup.isDuplicate || legacyFallbackHash === null
+            ? primaryDedup
+            : (() => {
+                const fallback = checkDuplicate(workspaceId, legacyFallbackHash);
+                return fallback.isDuplicate ? fallback : primaryDedup;
+              })();
         markImportRowDedup(
           workspaceId,
           row.id,
-          dedupHash,
+          primaryHash,
           dedup.isDuplicate,
           dedup.existingTransactionId
         );

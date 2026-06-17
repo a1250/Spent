@@ -58,6 +58,18 @@ Business unit reassignment must not change any financial totals. Only `business_
 ### No dedicated reassignment audit table
 There is currently no category-reassignment or business-unit-reassignment audit log table in the schema. Mutations are tracked only through git commit messages and the updated_at timestamp on transactions.
 
+### `other` and `unknown` are deliberate classifications, not gaps
+All 40 `other` and 18 `unknown` transactions were assigned via user-approved rules (rules
+638-654 for `other`; rules 626-627 for `unknown`) or through the manual review UI. These
+pools reflect genuine ambiguity (mixed ownership, unclear business attribution) that the user
+intentionally left as-is. Do not treat them as cleanup targets without explicit user direction.
+
+### Business unit assignments from user-approved rules are authoritative
+When a user-approved classification rule sets `business_unit`, that assignment is the user's
+explicit decision. Do not override it via bulk reassignment even if the merchant name appears
+to match another business unit. Rule 641 (GOOGLE*WORKSPACE MYTIV → other) is an example:
+despite "MYTIV" appearing in the name, the user explicitly approved `other` as the assignment.
+
 ## Future functionality
 
 ### Forecast is required future functionality

@@ -69,11 +69,26 @@ Last updated: 2026-06-17
 - DEFAULT_UNITS trimmed to generic only: personal, shared, other, unknown
 - Settings sidebar: Business Units under Categories group
 
+### Phase 2Y.1 - Business Unit Inventory and Analysis (docs commit 5dd826e, no data mutation)
+
+Deep inventory of all 12 business units and analysis of `other` and `unknown` pools.
+
+Key finding: ALL 40 `other` transactions and all 18 `unknown` transactions are there due to
+explicit user-approved rules (rules 638-654 for `other`, rules 626-627 for `unknown`). The user
+deliberately classified each one. Zero deterministic candidates for reassignment were found.
+No data was mutated.
+
+5 business units have zero transaction usage: umino, paseo, topsoccer, cctv360, shared.
+These exist in the DB registry from prior seeding but have no transactions tagged to them.
+
+QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
+
 ## Known pending items
 
-- 381 transactions remain needs_review
-- business_unit = NULL on all 381 needs_review transactions
-- ~40 transactions tagged `other`, ~18 tagged `unknown` (candidates for Phase 2Y.1 cleanup)
+- 381 transactions remain needs_review (business_unit = NULL on all 381)
+- 40 transactions tagged `other` via user-approved rules - deliberate, not gaps
+- 18 transactions tagged `unknown` via user-approved rules - deliberate, not gaps
+- 5 business units with zero usage: umino, paseo, topsoccer, cctv360, shared
 - No forecast feature yet
 - No MAX credit card rich adapter
 - File B must not be imported (confirmed 100% duplicates)

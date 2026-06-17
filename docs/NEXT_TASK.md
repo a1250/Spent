@@ -2,7 +2,7 @@
 
 ## Phase 2Y.1 - Business Unit Usage Review and Safe Initial Cleanup
 
-Status: APPROVED FOR EXECUTION
+Status: COMPLETE (no data mutation warranted)
 
 ### Objective
 
@@ -37,21 +37,31 @@ Must be ONE of:
 - An existing approved rule with a specific unit assignment
 - Matching historical sibling transactions consistently assigned to one unit
 
-### Completion criteria
+### Outcome
 
-- Deterministic candidates updated (or zero mutation if none qualify)
-- Baseline counts confirmed unchanged (1095/1924/55/8/652/704/10/381/12)
-- Financial totals unchanged
-- QA all passing
-- Docs updated
-- Local commit only (no push)
+Zero deterministic candidates were found.
+
+All 40 `other` and 18 `unknown` transactions were assigned via explicit user-approved rules
+(rules 638-654 for `other`; rules 626-627 for `unknown`) or through the manual review UI.
+No data was mutated.
+
+5 business units with zero usage: umino, paseo, topsoccer, cctv360, shared. These exist
+in the DB but have no transactions. No action taken (out of scope for this package).
+
+QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS.
 
 ---
 
-## Recommended next package after 2Y.1
+## Recommended next package
 
 **Phase 2Z - Business Unit Needs-Review Triage**
 
-After 2Y.1 completes the deterministic cleanup of `other`/`unknown`, the next natural step is to address the 381 needs_review transactions that currently have NULL business_unit. These need user review through the existing review UI before any business_unit assignment can happen. This is NOT an automatic operation.
+The 381 needs_review transactions (business_unit = NULL) are the only remaining business_unit
+gaps. These require user review through the existing review UI. This is NOT an automatic
+operation and should proceed one batch at a time through the review flow.
+
+Separately, the 5 zero-usage business units (umino, paseo, topsoccer, cctv360, shared) could
+be archived via the new /settings/business-units page if the user confirms they are no longer
+active. This requires explicit user confirmation per unit.
 
 Status: AWAITING APPROVAL

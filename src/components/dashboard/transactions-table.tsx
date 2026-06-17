@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import {
   Card,
@@ -26,6 +26,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MoreHorizontal,
@@ -37,15 +46,17 @@ import {
   EyeOff,
   Eye,
   Pencil,
+  X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
   setTransactionKind,
   getCategories,
   setTransactionExcluded,
+  bulkUpdateTransactions,
+  listBusinessUnits,
 } from "@/lib/api";
-import { toast } from "sonner";
 import { translateCategoryName, translateProviderName } from "@/lib/i18n-data";
 import {
   getAccountDisplayLabel,
@@ -66,6 +77,7 @@ import type { SortOrder, TransactionSortField } from "@/lib/transaction-sort";
 import { cn } from "@/lib/utils";
 import { ProviderBadge } from "@/components/setup/provider-badge";
 import type {
+  BusinessUnitRecord,
   TransactionWithCategory,
   Category,
   Integration,
@@ -94,6 +106,9 @@ interface TransactionsTableProps {
   sortOrder: SortOrder;
   onSortChange: (field: TransactionSortField) => void;
   isFetching?: boolean;
+  onRowClick?: (txn: TransactionWithCategory) => void;
+  selectedIds?: Set<number>;
+  onSelectionChange?: (ids: Set<number>) => void;
 }
 
 const PAGE_SIZE = 50;
@@ -116,6 +131,9 @@ export function TransactionsTable({
   sortOrder,
   onSortChange,
   isFetching = false,
+  onRowClick,
+  selectedIds,
+  onSelectionChange,
 }: TransactionsTableProps) {
   const t = useTranslations("transactions");
   const tCat = useTranslations("categoriesSeeded");
@@ -128,6 +146,55 @@ export function TransactionsTable({
     initialCategoryId: number | null;
   } | null>(null);
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const hasSelection = onSelectionChange != null;
+  const selectionSize = selectedIds?.size ?? 0;
+
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>("");
+  const [bulkBu, setBulkBu] = useState<string>("");
+  const [bulkStatus, setBulkStatus] = useState<string>("");
+
+  const bulkMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedIds || selectedIds.size === 0) throw new Error("No rows selected");
+      const patch: Parameters<typeof bulkUpdateTransactions>[1] = {};
+      if (bulkCategoryId) patch.categoryId = bulkCategoryId === "none" ? null : Number(bulkCategoryId);
+      if (bulkBu) patch.businessUnit = bulkBu === "none" ? null : bulkBu;
+      if (bulkStatus) patch.classificationStatus = bulkStatus;
+      if (Object.keys(patch).length === 0) throw new Error("Select at least one field to change");
+      return bulkUpdateTransactions(Array.from(selectedIds), patch);
+    },
+    onSuccess: (result) => {
+      toast.success(`Updated ${result.updated} transactions`);
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["summary"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      onSelectionChange?.(new Set());
+      setBulkCategoryId("");
+      setBulkBu("");
+      setBulkStatus("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Bulk update failed");
+    },
+  });
+
+  const toggleRowSelection = (id: number) => {
+    if (!onSelectionChange || !selectedIds) return;
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onSelectionChange(next);
+  };
+
+  const toggleAllSelection = () => {
+    if (!onSelectionChange || !selectedIds) return;
+    if (selectedIds.size === transactions.length) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(transactions.map((t) => t.id)));
+    }
+  };
 
   const otherKinds: Record<Kind, Array<{ value: Kind; label: string }>> = {
     expense: [
@@ -205,6 +272,11 @@ export function TransactionsTable({
   const expenseCategoriesQuery = useQuery({
     queryKey: ["categories", "expense"],
     queryFn: () => getCategories("expense"),
+  });
+  const businessUnitsQuery = useQuery({
+    queryKey: ["business-units"],
+    queryFn: () => listBusinessUnits(),
+    enabled: hasSelection,
   });
 
   const categoriesForKind = (rowKind: Kind): Category[] => {
@@ -433,7 +505,22 @@ export function TransactionsTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[32px]" />
+                  {hasSelection ? (
+                    <TableHead className="w-[36px]">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer rounded border-border"
+                        checked={selectionSize > 0 && selectionSize === transactions.length}
+                        ref={(el) => {
+                          if (el) el.indeterminate = selectionSize > 0 && selectionSize < transactions.length;
+                        }}
+                        onChange={toggleAllSelection}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
+                  ) : (
+                    <TableHead className="w-[32px]" />
+                  )}
                   <SortableTableHead
                     label={t("headerDate")}
                     field="date"
@@ -503,16 +590,35 @@ export function TransactionsTable({
                       className={cn(
                         "transition-colors duration-200 hover:bg-muted/50",
                         txn.isExcluded && "opacity-50",
+                        (onRowClick || hasSelection) && "cursor-pointer",
+                        selectedIds?.has(txn.id) && "bg-accent/40",
                       )}
+                      onClick={() => {
+                        if (hasSelection) {
+                          toggleRowSelection(txn.id);
+                        } else {
+                          onRowClick?.(txn);
+                        }
+                      }}
                     >
-                      <TableCell>
-                        <div style={{ color: directionColor }}>
-                          {isIncome ? (
-                            <ArrowUpRight className="h-4 w-4" />
-                          ) : (
-                            <ArrowDownRight className="h-4 w-4" />
-                          )}
-                        </div>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {hasSelection ? (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer rounded border-border"
+                            checked={selectedIds?.has(txn.id) ?? false}
+                            onChange={() => toggleRowSelection(txn.id)}
+                            aria-label="Select row"
+                          />
+                        ) : (
+                          <div style={{ color: directionColor }}>
+                            {isIncome ? (
+                              <ArrowUpRight className="h-4 w-4" />
+                            ) : (
+                              <ArrowDownRight className="h-4 w-4" />
+                            )}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm tabular-nums text-muted-foreground">
                         {formatDate(txn.date)}
@@ -560,7 +666,7 @@ export function TransactionsTable({
                             </div>
                           )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1.5">
                           <DropdownMenu>
                             <DropdownMenuTrigger
@@ -640,7 +746,7 @@ export function TransactionsTable({
                       >
                         {formatCurrency(txn.chargedAmount, "ILS", locale)}
                       </TableCell>
-                      <TableCell className="text-end">
+                      <TableCell className="text-end" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -748,6 +854,126 @@ export function TransactionsTable({
           onSaved={invalidateAfterLearning}
         />
       )}
+      {hasSelection && selectionSize > 0 && (
+        <BulkEditBar
+          selectionSize={selectionSize}
+          categories={categories}
+          businessUnits={businessUnitsQuery.data ?? []}
+          bulkCategoryId={bulkCategoryId}
+          bulkBu={bulkBu}
+          bulkStatus={bulkStatus}
+          onCategoryChange={setBulkCategoryId}
+          onBuChange={setBulkBu}
+          onStatusChange={setBulkStatus}
+          onApply={() => bulkMutation.mutate()}
+          onClear={() => onSelectionChange?.(new Set())}
+          isPending={bulkMutation.isPending}
+        />
+      )}
     </>
+  );
+}
+
+// ── Bulk edit bar ─────────────────────────────────────────────────────────────
+
+interface BulkEditBarProps {
+  selectionSize: number;
+  categories: Category[];
+  businessUnits: BusinessUnitRecord[];
+  bulkCategoryId: string;
+  bulkBu: string;
+  bulkStatus: string;
+  onCategoryChange: (v: string) => void;
+  onBuChange: (v: string) => void;
+  onStatusChange: (v: string) => void;
+  onApply: () => void;
+  onClear: () => void;
+  isPending: boolean;
+}
+
+function BulkEditBar({
+  selectionSize,
+  categories,
+  businessUnits,
+  bulkCategoryId,
+  bulkBu,
+  bulkStatus,
+  onCategoryChange,
+  onBuChange,
+  onStatusChange,
+  onApply,
+  onClear,
+  isPending,
+}: BulkEditBarProps) {
+  const parentCategories = categories.filter((c) => c.parentId === null);
+  const leafCategories = categories.filter((c) => c.parentId !== null);
+
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-border bg-popover px-4 py-2 shadow-lg">
+      <span className="shrink-0 text-sm font-medium">
+        {selectionSize} selected
+      </span>
+      <div className="h-4 w-px bg-border" />
+      <Select value={bulkCategoryId} onValueChange={(v) => { if (v) onCategoryChange(v); }}>
+        <SelectTrigger className="h-8 w-[160px] rounded-full text-xs">
+          <SelectValue placeholder="Category..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Clear category</SelectItem>
+          {parentCategories.map((parent) => {
+            const children = leafCategories.filter((l) => l.parentId === parent.id);
+            if (children.length === 0) return null;
+            return (
+              <SelectGroup key={parent.id}>
+                <SelectLabel>{parent.name}</SelectLabel>
+                {children.map((cat) => (
+                  <SelectItem key={cat.id} value={String(cat.id)}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      <Select value={bulkBu} onValueChange={(v) => { if (v) onBuChange(v); }}>
+        <SelectTrigger className="h-8 w-[140px] rounded-full text-xs">
+          <SelectValue placeholder="Business unit..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Clear BU</SelectItem>
+          {businessUnits.map((bu) => (
+            <SelectItem key={bu.slug} value={bu.slug}>{bu.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={bulkStatus} onValueChange={(v) => { if (v) onStatusChange(v); }}>
+        <SelectTrigger className="h-8 w-[140px] rounded-full text-xs">
+          <SelectValue placeholder="Status..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="manually_approved">Approved</SelectItem>
+          <SelectItem value="needs_review">Needs Review</SelectItem>
+          <SelectItem value="auto_classified">Auto-classified</SelectItem>
+        </SelectContent>
+      </Select>
+      <div className="h-4 w-px bg-border" />
+      <Button
+        size="sm"
+        className="h-8 rounded-full"
+        onClick={onApply}
+        disabled={isPending || (!bulkCategoryId && !bulkBu && !bulkStatus)}
+      >
+        {isPending ? "Applying..." : "Apply"}
+      </Button>
+      <button
+        type="button"
+        onClick={onClear}
+        className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+        aria-label="Clear selection"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

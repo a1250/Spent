@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { setTransactionKind } from "@/server/db/queries/transactions";
+import {
+  setTransactionKind,
+  getTransaction,
+  updateTransaction,
+} from "@/server/db/queries/transactions";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import { applyTransactionLearning } from "@/server/classification/learning-rules";
 import { LearningPolicyError } from "@/lib/classification-learning-policy";
@@ -12,6 +16,24 @@ import type {
   LearningRuleMatchType,
   PnlImpact,
 } from "@/lib/types";
+import type { TransactionEditPatch } from "@/server/db/queries/transactions";
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const workspaceId = getWorkspaceIdFromRequest(request);
+  const { id } = await params;
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
+  const tx = getTransaction(workspaceId, numericId);
+  if (!tx) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json({ transaction: tx });
+}
 
 export async function PUT() {
   return NextResponse.json(
@@ -32,6 +54,7 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     kind?: unknown;
     approve?: unknown;
+    edit?: TransactionEditPatch;
     learning?: {
       categoryId: number | null;
       financialNature: FinancialNature;
@@ -49,6 +72,28 @@ export async function PATCH(
   };
 
   const numericId = Number(id);
+
+  // General-purpose field edit — no rules created, no learning policy
+  if (body.edit) {
+    const patch = body.edit;
+    const allowed: (keyof TransactionEditPatch)[] = [
+      "date", "description", "counterparty", "cleanDescription",
+      "categoryId", "kind", "financialNature", "cashFlowType",
+      "pnlImpact", "classificationStatus", "businessUnit", "note",
+    ];
+    const sanitized: TransactionEditPatch = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(patch, key)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (sanitized as any)[key] = (patch as any)[key];
+      }
+    }
+    const result = updateTransaction(workspaceId, numericId, sanitized);
+    if (!result.updated) {
+      return NextResponse.json({ error: "Not found or no changes" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  }
 
   if (body.learning) {
     if (

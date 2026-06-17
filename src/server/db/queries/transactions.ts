@@ -157,6 +157,14 @@ interface QueryParams {
   /** @deprecated Use credentialIds */
   credentialId?: number;
   credentialIds?: number[];
+  // Phase 2Z filters
+  businessUnit?: string;
+  classificationStatus?: string;
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  minAmount?: number;
+  maxAmount?: number;
 }
 
 function appendCredentialIdsFilter(
@@ -237,6 +245,37 @@ export function queryTransactions(
         ? [params.credentialId]
         : undefined;
   appendCredentialIdsFilter(conditions, values, credentialIds, "t.");
+
+  if (params.businessUnit === "none") {
+    conditions.push("t.business_unit IS NULL");
+  } else if (params.businessUnit) {
+    conditions.push("t.business_unit = ?");
+    values.push(params.businessUnit);
+  }
+  if (params.classificationStatus) {
+    conditions.push("t.classification_status = ?");
+    values.push(params.classificationStatus);
+  }
+  if (params.financialNature) {
+    conditions.push("t.financial_nature = ?");
+    values.push(params.financialNature);
+  }
+  if (params.cashFlowType) {
+    conditions.push("t.cash_flow_type = ?");
+    values.push(params.cashFlowType);
+  }
+  if (params.pnlImpact) {
+    conditions.push("t.pnl_impact = ?");
+    values.push(params.pnlImpact);
+  }
+  if (params.minAmount !== undefined) {
+    conditions.push("ABS(t.charged_amount) >= ?");
+    values.push(params.minAmount);
+  }
+  if (params.maxAmount !== undefined) {
+    conditions.push("ABS(t.charged_amount) <= ?");
+    values.push(params.maxAmount);
+  }
 
   const where = `WHERE ${conditions.join(" AND ")}`;
 
@@ -585,6 +624,7 @@ interface TransactionRow {
   linked_transaction_id: number | null;
   import_batch_id: number | null;
   import_row_id: number | null;
+  note: string | null;
   source_category?: string | null;
   created_at: string;
   updated_at: string;
@@ -635,6 +675,7 @@ export function mapTransactionRow(row: unknown): TransactionWithCategory {
     importBatchId: r.import_batch_id ?? null,
     importRowId: r.import_row_id ?? null,
     sourceCategory: r.source_category ?? null,
+    note: r.note ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     categoryName: r.category_name ?? null,
@@ -864,4 +905,348 @@ export function getNeedsReviewCountByCategory(
        GROUP BY category_id`
     )
     .all(workspaceId, from, to) as NeedsReviewCount[];
+}
+
+// ── Phase 2Z: single-record fetch ─────────────────────────────────────────────
+
+export function getTransaction(
+  workspaceId: number,
+  id: number
+): TransactionWithCategory | null {
+  const row = getDb()
+    .prepare(
+      `${TRANSACTION_LIST_SELECT}
+       WHERE t.workspace_id = ? AND t.id = ?
+       LIMIT 1`
+    )
+    .get(workspaceId, id);
+  return row ? mapTransactionRow(row) : null;
+}
+
+// ── Phase 2Z: audit log ───────────────────────────────────────────────────────
+
+export function logAuditEntry(
+  workspaceId: number,
+  transactionId: number | null,
+  action: string,
+  fieldName: string | null,
+  oldValue: string | null,
+  newValue: string | null,
+  context?: string
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO transaction_audit_log
+         (workspace_id, transaction_id, action, field_name, old_value, new_value, context)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      workspaceId,
+      transactionId,
+      action,
+      fieldName,
+      oldValue,
+      newValue,
+      context ?? null
+    );
+}
+
+// ── Phase 2Z: single-record update ────────────────────────────────────────────
+
+const EDITABLE_FIELDS = new Set([
+  "date",
+  "description",
+  "counterparty",
+  "clean_description",
+  "category_id",
+  "kind",
+  "financial_nature",
+  "cash_flow_type",
+  "pnl_impact",
+  "classification_status",
+  "business_unit",
+  "note",
+]);
+
+export interface TransactionEditPatch {
+  date?: string;
+  description?: string;
+  counterparty?: string | null;
+  cleanDescription?: string | null;
+  categoryId?: number | null;
+  kind?: "expense" | "income" | "transfer";
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  classificationStatus?: string;
+  businessUnit?: string | null;
+  note?: string | null;
+}
+
+const PATCH_COLUMN_MAP: Record<keyof TransactionEditPatch, string> = {
+  date: "date",
+  description: "description",
+  counterparty: "counterparty",
+  cleanDescription: "clean_description",
+  categoryId: "category_id",
+  kind: "kind",
+  financialNature: "financial_nature",
+  cashFlowType: "cash_flow_type",
+  pnlImpact: "pnl_impact",
+  classificationStatus: "classification_status",
+  businessUnit: "business_unit",
+  note: "note",
+};
+
+export function updateTransaction(
+  workspaceId: number,
+  id: number,
+  patch: TransactionEditPatch
+): { updated: boolean } {
+  const db = getDb();
+
+  const keys = Object.keys(patch) as (keyof TransactionEditPatch)[];
+  if (keys.length === 0) return { updated: false };
+
+  const columns = keys.map((k) => PATCH_COLUMN_MAP[k]).filter((c) => EDITABLE_FIELDS.has(c));
+  if (columns.length === 0) return { updated: false };
+
+  const currentRow = db
+    .prepare(`SELECT ${columns.join(", ")}, needs_review FROM transactions WHERE workspace_id = ? AND id = ?`)
+    .get(workspaceId, id) as Record<string, unknown> | undefined;
+
+  if (!currentRow) return { updated: false };
+
+  const setClauses = columns.map((c) => `${c} = ?`);
+  const setValues = keys.map((k) => {
+    const v = patch[k];
+    return v === undefined ? null : v;
+  });
+
+  // If classificationStatus set to manually_approved, also clear needs_review
+  let clearNeedsReview = false;
+  if (patch.classificationStatus === "manually_approved" && currentRow["needs_review"] !== 0) {
+    clearNeedsReview = true;
+    setClauses.push("needs_review = 0");
+  }
+
+  // If classificationStatus set to needs_review, set needs_review = 1
+  if (patch.classificationStatus === "needs_review") {
+    setClauses.push("needs_review = 1");
+  }
+
+  db.transaction(() => {
+    db
+      .prepare(
+        `UPDATE transactions SET ${setClauses.join(", ")}, updated_at = datetime('now')
+         WHERE workspace_id = ? AND id = ?`
+      )
+      .run(...setValues, workspaceId, id);
+
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const col = PATCH_COLUMN_MAP[k];
+      if (!EDITABLE_FIELDS.has(col)) continue;
+      const oldVal = currentRow[col];
+      const newVal = patch[k];
+      logAuditEntry(
+        workspaceId,
+        id,
+        "edit",
+        col,
+        oldVal != null ? String(oldVal) : null,
+        newVal != null ? String(newVal) : null,
+        "single_edit"
+      );
+    }
+
+    if (clearNeedsReview) {
+      logAuditEntry(workspaceId, id, "edit", "needs_review", "1", "0", "single_edit");
+    }
+  })();
+
+  return { updated: true };
+}
+
+// ── Phase 2Z: bulk update ─────────────────────────────────────────────────────
+
+export interface TransactionBulkPatch {
+  categoryId?: number | null;
+  businessUnit?: string | null;
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  classificationStatus?: string;
+}
+
+const BULK_PATCH_COLUMN_MAP: Record<keyof TransactionBulkPatch, string> = {
+  categoryId: "category_id",
+  businessUnit: "business_unit",
+  financialNature: "financial_nature",
+  cashFlowType: "cash_flow_type",
+  pnlImpact: "pnl_impact",
+  classificationStatus: "classification_status",
+};
+
+export function bulkUpdateTransactions(
+  workspaceId: number,
+  ids: number[],
+  patch: TransactionBulkPatch
+): { updated: number } {
+  if (ids.length === 0) return { updated: 0 };
+  const db = getDb();
+
+  const keys = Object.keys(patch) as (keyof TransactionBulkPatch)[];
+  if (keys.length === 0) return { updated: 0 };
+
+  const columns = keys.map((k) => BULK_PATCH_COLUMN_MAP[k]);
+  const setClauses = columns.map((c) => `${c} = ?`);
+  const setValues = keys.map((k) => {
+    const v = patch[k];
+    return v === undefined ? null : v;
+  });
+
+  let clearNeedsReview = false;
+  if (patch.classificationStatus === "manually_approved") {
+    setClauses.push("needs_review = 0");
+    clearNeedsReview = true;
+  } else if (patch.classificationStatus === "needs_review") {
+    setClauses.push("needs_review = 1");
+  }
+
+  const placeholders = ids.map(() => "?").join(",");
+
+  let updatedCount = 0;
+
+  db.transaction(() => {
+    const result = db
+      .prepare(
+        `UPDATE transactions SET ${setClauses.join(", ")}, updated_at = datetime('now')
+         WHERE workspace_id = ? AND id IN (${placeholders})`
+      )
+      .run(...setValues, workspaceId, ...ids);
+
+    updatedCount = result.changes;
+
+    for (const txId of ids) {
+      for (const k of keys) {
+        const col = BULK_PATCH_COLUMN_MAP[k];
+        const newVal = patch[k];
+        logAuditEntry(
+          workspaceId,
+          txId,
+          "bulk_edit",
+          col,
+          null,
+          newVal != null ? String(newVal) : null,
+          `bulk_${ids.length}_rows`
+        );
+      }
+      if (clearNeedsReview) {
+        logAuditEntry(workspaceId, txId, "bulk_edit", "needs_review", null, "0", `bulk_${ids.length}_rows`);
+      }
+    }
+  })();
+
+  return { updated: updatedCount };
+}
+
+// ── Phase 2Z: manual transaction creation ─────────────────────────────────────
+
+export interface ManualTransactionInput {
+  date: string;
+  description: string;
+  amount: number;
+  direction: "income" | "expense";
+  categoryId?: number | null;
+  businessUnit?: string | null;
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  note?: string | null;
+}
+
+export function createManualTransaction(
+  workspaceId: number,
+  input: ManualTransactionInput
+): TransactionWithCategory {
+  const db = getDb();
+
+  const syncRun = db
+    .prepare(
+      `INSERT INTO sync_runs
+         (workspace_id, provider, started_at, completed_at, status, scrape_from_date, transactions_added, transactions_updated, created_at)
+       VALUES (?, 'manual', datetime('now'), datetime('now'), 'completed', ?, 1, 0, datetime('now'))`
+    )
+    .run(workspaceId, input.date);
+
+  const syncRunId = syncRun.lastInsertRowid as number;
+
+  const chargedAmount =
+    input.direction === "income" ? Math.abs(input.amount) : -Math.abs(input.amount);
+  const kind: "expense" | "income" = input.direction === "expense" ? "expense" : "income";
+
+  const hash = computeDedupHash({
+    accountNumber: "manual",
+    date: input.date,
+    originalAmount: chargedAmount,
+    originalCurrency: "ILS",
+    description: input.description,
+    identifier: undefined,
+    installmentNumber: undefined,
+    installmentTotal: undefined,
+  });
+
+  const existingCount = (
+    db
+      .prepare("SELECT COUNT(*) as count FROM transactions WHERE workspace_id = ? AND dedup_hash = ?")
+      .get(workspaceId, hash) as { count: number }
+  ).count;
+
+  const result = db
+    .prepare(
+      `INSERT INTO transactions (
+         workspace_id, account_number, date, processed_date,
+         original_amount, original_currency, charged_amount, charged_currency,
+         description, type, status, provider, sync_run_id,
+         dedup_hash, dedup_sequence, kind,
+         category_id, business_unit,
+         financial_nature, cash_flow_type, pnl_impact,
+         classification_status, needs_review, note
+       ) VALUES (
+         ?, 'manual', ?, ?,
+         ?, 'ILS', ?, 'ILS',
+         ?, 'normal', 'completed', 'manual', ?,
+         ?, ?, ?,
+         ?, ?,
+         ?, ?, ?,
+         'manually_approved', 0, ?
+       )`
+    )
+    .run(
+      workspaceId,
+      input.date,
+      input.date,
+      chargedAmount,
+      chargedAmount,
+      input.description,
+      syncRunId,
+      hash,
+      existingCount,
+      kind,
+      input.categoryId ?? null,
+      input.businessUnit ?? null,
+      input.financialNature ?? "unknown",
+      input.cashFlowType ?? "unknown",
+      input.pnlImpact ?? "maybe",
+      input.note ?? null
+    );
+
+  const newId = result.lastInsertRowid as number;
+
+  logAuditEntry(workspaceId, newId, "create", null, null, null, "manual_entry");
+
+  const tx = getTransaction(workspaceId, newId);
+  if (!tx) throw new Error("Failed to fetch newly created transaction");
+  return tx;
 }

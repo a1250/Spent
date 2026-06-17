@@ -8,7 +8,11 @@ Last updated: 2026-06-17
 
 ## Latest pushed commit
 
-`f9bff71` - feat: add business unit management
+`f9bff71` - feat: add business unit management (pushed)
+
+## Latest local commit (not pushed)
+
+Phase 2Z - Dynamic Transaction Management (not yet committed)
 
 ## Verified baseline (as of f9bff71)
 
@@ -82,6 +86,21 @@ No data was mutated.
 These exist in the DB registry from prior seeding but have no transactions tagged to them.
 
 QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
+
+### Phase 2Z - Dynamic Transaction Management (local, not yet committed)
+
+- Migration 036: `transaction_audit_log` table + `note TEXT` column on transactions
+- Extend `queryTransactions` with businessUnit/classificationStatus/financialNature/cashFlowType/pnlImpact/minAmount/maxAmount filters
+- GET /api/transactions/[id] (single transaction fetch)
+- POST /api/transactions (manual transaction creation, provider='manual')
+- PATCH /api/transactions/[id] with `edit` body (general field editing, audit logged)
+- PATCH /api/transactions/bulk (bulk update: category/BU/financialNature/cashFlowType/pnlImpact/status)
+- TransactionDetailSheet: right-side sheet for editing any transaction field
+- TransactionCreateDialog: dialog for creating manual transactions
+- TransactionsTable: row click opens detail sheet, checkbox bulk selection, floating BulkEditBar
+- TransactionsPage: BU and status filter dropdowns, "Add" button, select-rows toggle
+- All mutations write to transaction_audit_log
+- Baseline preserved: 1095 tx / 8/8 dedup / 36/36 learning-policy
 
 ## Known pending items
 

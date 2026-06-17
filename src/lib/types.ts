@@ -113,6 +113,7 @@ export interface Transaction {
   importBatchId: number | null;
   importRowId: number | null;
   sourceCategory: string | null;
+  note: string | null;
   createdAt: string;
   updatedAt: string;
 }

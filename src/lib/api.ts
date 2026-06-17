@@ -226,14 +226,19 @@ export function getTransactions(params: {
   kind?: TransactionKindFilter;
   provider?: string;
   credentialIds?: number[];
+  businessUnit?: string;
+  classificationStatus?: string;
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  minAmount?: number;
+  maxAmount?: number;
 }) {
   const searchParams = new URLSearchParams();
+  const multiKeys = new Set(["categoryIds", "credentialIds"]);
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined) return;
-    if (
-      (key === "categoryIds" || key === "credentialIds") &&
-      Array.isArray(value)
-    ) {
+    if (multiKeys.has(key) && Array.isArray(value)) {
       for (const id of value) searchParams.append(key, String(id));
       return;
     }
@@ -242,6 +247,73 @@ export function getTransactions(params: {
   return fetchJSON<{ transactions: TransactionWithCategory[]; total: number }>(
     `/api/transactions?${searchParams}`
   );
+}
+
+export function getTransaction(id: number) {
+  return fetchJSON<{ transaction: TransactionWithCategory }>(
+    `/api/transactions/${id}`
+  );
+}
+
+export function updateTransaction(
+  id: number,
+  patch: {
+    date?: string;
+    description?: string;
+    counterparty?: string | null;
+    cleanDescription?: string | null;
+    categoryId?: number | null;
+    kind?: "expense" | "income" | "transfer";
+    financialNature?: string;
+    cashFlowType?: string;
+    pnlImpact?: string;
+    classificationStatus?: string;
+    businessUnit?: string | null;
+    note?: string | null;
+  }
+) {
+  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ edit: patch }),
+  });
+}
+
+export function createTransaction(input: {
+  date: string;
+  description: string;
+  amount: number;
+  direction: "income" | "expense";
+  categoryId?: number | null;
+  businessUnit?: string | null;
+  financialNature?: string;
+  cashFlowType?: string;
+  pnlImpact?: string;
+  note?: string | null;
+}) {
+  return fetchJSON<{ transaction: TransactionWithCategory }>(`/api/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function bulkUpdateTransactions(
+  ids: number[],
+  patch: {
+    categoryId?: number | null;
+    businessUnit?: string | null;
+    financialNature?: string;
+    cashFlowType?: string;
+    pnlImpact?: string;
+    classificationStatus?: string;
+  }
+) {
+  return fetchJSON<{ updated: number }>(`/api/transactions/bulk`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, patch }),
+  });
 }
 
 export function setTransactionKind(id: number, kind: TransactionKind) {

@@ -78,7 +78,7 @@ export function MonthlyPnLPreviewPage() {
   });
   const businessUnitsQuery = useQuery({
     queryKey: ["business-units"],
-    queryFn: listBusinessUnits,
+    queryFn: () => listBusinessUnits(),
   });
 
   const report = reportQuery.data;

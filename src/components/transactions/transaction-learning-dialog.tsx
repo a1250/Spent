@@ -144,7 +144,7 @@ export function TransactionLearningDialog({
 
   const { data: businessUnits = [] } = useQuery({
     queryKey: ["business-units"],
-    queryFn: listBusinessUnits,
+    queryFn: () => listBusinessUnits(),
   });
 
   const parentCategories = categories.filter((c) => c.parentId === null);

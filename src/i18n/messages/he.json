@@ -339,7 +339,8 @@
       "bank": "חשבונות בנק",
       "ai": "ספק AI",
       "categories": "קטגוריות",
-      "data": "נתונים ופרטיות"
+      "data": "נתונים ופרטיות",
+      "businessUnits": "יחידות עסקיות"
     },
     "workspace": {
       "nameTitle": "שם סביבת העבודה",
@@ -781,8 +782,12 @@
         "placeholder": "הסיסמה שאתם משתמשים בה ב־digital.isracard.co.il",
         "hint": "אותה סיסמה שאתם משתמשים בה להתחברות באתר ישראכרט."
       },
-      "username": { "label": "שם משתמש" },
-      "userCode": { "label": "קוד משתמש" },
+      "username": {
+        "label": "שם משתמש"
+      },
+      "userCode": {
+        "label": "קוד משתמש"
+      },
       "num": {
         "label": "מספר חשבון",
         "discountPlaceholder": "מספר חשבון דיסקונט שלכם",

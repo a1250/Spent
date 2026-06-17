@@ -339,7 +339,8 @@
       "bank": "Bank accounts",
       "ai": "AI provider",
       "categories": "Categories",
-      "data": "Data & privacy"
+      "data": "Data & privacy",
+      "businessUnits": "Business Units"
     },
     "workspace": {
       "nameTitle": "Workspace name",
@@ -781,8 +782,12 @@
         "placeholder": "Password you use on digital.isracard.co.il",
         "hint": "The same password you use to log in on the Isracard website."
       },
-      "username": { "label": "Username" },
-      "userCode": { "label": "User Code" },
+      "username": {
+        "label": "Username"
+      },
+      "userCode": {
+        "label": "User Code"
+      },
       "num": {
         "label": "Account Number",
         "discountPlaceholder": "Your Discount account number",

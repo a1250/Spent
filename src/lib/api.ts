@@ -734,8 +734,39 @@ export function pullOllamaModel(
   return { cancel: () => controller.abort() };
 }
 
-export function listBusinessUnits() {
-  return fetchJSON<BusinessUnitRecord[]>("/api/business-units");
+export function listBusinessUnits(opts?: {
+  includeInactive?: boolean;
+  includeCounts?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (opts?.includeInactive) params.set("includeInactive", "1");
+  if (opts?.includeCounts) params.set("includeCounts", "1");
+  const qs = params.size > 0 ? `?${params}` : "";
+  return fetchJSON<BusinessUnitRecord[]>(`/api/business-units${qs}`);
+}
+
+export function createBusinessUnit(input: {
+  slug: string;
+  label: string;
+  description?: string | null;
+  color?: string | null;
+}) {
+  return fetchJSON<BusinessUnitRecord>("/api/business-units", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateBusinessUnit(
+  id: number,
+  patch: { label?: string; description?: string | null; color?: string | null; isActive?: boolean }
+) {
+  return fetchJSON<BusinessUnitRecord>(`/api/business-units/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
 }
 
 // ── Import API ────────────────────────────────────────────────────────────────

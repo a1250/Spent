@@ -191,7 +191,7 @@ function EditRowDialog({
   });
   const { data: businessUnits = [] } = useQuery({
     queryKey: ["business-units"],
-    queryFn: listBusinessUnits,
+    queryFn: () => listBusinessUnits(),
   });
   // Separate parents and leaves for grouped display
   const parentCategories = allCategories.filter((c) => c.parentId === null);

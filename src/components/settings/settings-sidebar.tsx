@@ -9,6 +9,7 @@ import {
   Landmark,
   Sparkles,
   Layers,
+  Building2,
   ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,6 +69,12 @@ const GROUPS: NavGroup[] = [
         labelKey: "categories",
         Icon: Layers,
         match: (p) => p.startsWith("/settings/categories"),
+      },
+      {
+        href: "/settings/business-units",
+        labelKey: "businessUnits",
+        Icon: Building2,
+        match: (p) => p.startsWith("/settings/business-units"),
       },
     ],
   },

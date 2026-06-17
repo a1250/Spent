@@ -49,10 +49,12 @@ export interface BusinessUnitRecord {
   slug: string;
   label: string;
   color: string | null;
+  description: string | null;
   isActive: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  txCount?: number;
 }
 
 export type TransactionDirection = "income" | "expense" | "transfer" | "unknown";

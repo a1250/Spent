@@ -3,6 +3,9 @@ import {
   setTransactionKind,
   getTransaction,
   updateTransaction,
+  voidTransaction,
+  unvoidTransaction,
+  updateManualTransactionAmount,
 } from "@/server/db/queries/transactions";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import { applyTransactionLearning } from "@/server/classification/learning-rules";
@@ -54,6 +57,9 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     kind?: unknown;
     approve?: unknown;
+    void?: { reason: string };
+    unvoid?: boolean;
+    amountEdit?: { chargedAmount: number };
     edit?: TransactionEditPatch;
     learning?: {
       categoryId: number | null;
@@ -72,6 +78,40 @@ export async function PATCH(
   };
 
   const numericId = Number(id);
+
+  if (body.void != null) {
+    const reason = typeof body.void.reason === "string" && body.void.reason.trim()
+      ? body.void.reason.trim()
+      : "voided";
+    const result = voidTransaction(workspaceId, numericId, reason);
+    if (!result.voided) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (body.unvoid === true) {
+    const result = unvoidTransaction(workspaceId, numericId);
+    if (!result.unvoided) {
+      return NextResponse.json({ error: "Not found or not voided" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (body.amountEdit != null) {
+    const { chargedAmount } = body.amountEdit;
+    if (typeof chargedAmount !== "number" || !Number.isFinite(chargedAmount) || chargedAmount === 0) {
+      return NextResponse.json({ error: "chargedAmount must be a non-zero finite number" }, { status: 400 });
+    }
+    const result = updateManualTransactionAmount(workspaceId, numericId, chargedAmount);
+    if (!result.updated) {
+      return NextResponse.json(
+        { error: "Not found or not a manual transaction" },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json({ success: true });
+  }
 
   // General-purpose field edit — no rules created, no learning policy
   if (body.edit) {

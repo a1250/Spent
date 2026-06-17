@@ -70,6 +70,25 @@ explicit decision. Do not override it via bulk reassignment even if the merchant
 to match another business unit. Rule 641 (GOOGLE*WORKSPACE MYTIV → other) is an example:
 despite "MYTIV" appearing in the name, the user explicitly approved `other` as the assignment.
 
+## Transaction management
+
+### Void uses is_excluded + void_reason, not a status value
+Voided transactions use `is_excluded=1` (existing column) plus a new `void_reason TEXT` column
+(migration 037). The alternative of using `classification_status='voided'` was rejected because
+the status CHECK constraint was not designed for this and it conflates classification state with
+exclusion intent. Voided transactions remain in the DB and audit log but are excluded from all
+financial aggregates and report totals. Unvoid restores them by clearing both fields.
+
+### Amount editing is restricted to manual transactions
+The `charged_amount` field is editable only when `provider='manual'`. Imported transaction
+amounts are treated as immutable source data. Any edit goes through `updateManualTransactionAmount`
+and is audit logged. This preserves the integrity of the import record.
+
+### Filter multi-select uses arrays via repeated query params
+BU, classificationStatus, and financialNature filters accept multiple values via repeated
+URL params (e.g. `?businessUnit=a&businessUnit=b`). The server uses `IN (...)` SQL with
+special handling for the `none` sentinel (maps to `IS NULL`). Single-value usage still works.
+
 ## Future functionality
 
 ### Forecast is required future functionality

@@ -52,9 +52,15 @@ export async function GET(request: Request) {
     kind: parseKind(searchParams.get("kind")),
     provider: searchParams.get("provider") ?? undefined,
     credentialIds: credentialIds.length > 0 ? credentialIds : undefined,
-    businessUnit: searchParams.get("businessUnit") ?? undefined,
-    classificationStatus: searchParams.get("classificationStatus") ?? undefined,
-    financialNature: searchParams.get("financialNature") ?? undefined,
+    businessUnit: searchParams.getAll("businessUnit").length > 0
+      ? searchParams.getAll("businessUnit")
+      : undefined,
+    classificationStatus: searchParams.getAll("classificationStatus").length > 0
+      ? searchParams.getAll("classificationStatus")
+      : undefined,
+    financialNature: searchParams.getAll("financialNature").length > 0
+      ? searchParams.getAll("financialNature")
+      : undefined,
     cashFlowType: searchParams.get("cashFlowType") ?? undefined,
     pnlImpact: searchParams.get("pnlImpact") ?? undefined,
     minAmount: minAmountRaw ? Number(minAmountRaw) : undefined,

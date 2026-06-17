@@ -12,7 +12,7 @@ Last updated: 2026-06-17
 
 ## Latest local commit (not pushed)
 
-Phase 2Z - Dynamic Transaction Management (not yet committed)
+Phase 3A - Transaction Management Polish + Void Support (not yet committed)
 
 ## Verified baseline (as of f9bff71)
 
@@ -87,7 +87,7 @@ These exist in the DB registry from prior seeding but have no transactions tagge
 
 QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
 
-### Phase 2Z - Dynamic Transaction Management (local, not yet committed)
+### Phase 2Z - Dynamic Transaction Management (commit 369b6b2)
 
 - Migration 036: `transaction_audit_log` table + `note TEXT` column on transactions
 - Extend `queryTransactions` with businessUnit/classificationStatus/financialNature/cashFlowType/pnlImpact/minAmount/maxAmount filters
@@ -100,7 +100,21 @@ QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
 - TransactionsTable: row click opens detail sheet, checkbox bulk selection, floating BulkEditBar
 - TransactionsPage: BU and status filter dropdowns, "Add" button, select-rows toggle
 - All mutations write to transaction_audit_log
-- Baseline preserved: 1095 tx / 8/8 dedup / 36/36 learning-policy
+
+### Phase 3A - Transaction Management Polish + Void Support (local, not yet committed)
+
+- Migration 037: `void_reason TEXT` column on transactions
+- BU/status/financialNature filters upgraded to multi-select (TransactionMultiFilter components)
+- Inactive business units excluded from filter dropdown and detail sheet
+- Void/unvoid transactions: sets is_excluded=1 + void_reason, audit logged, reversible
+- Amount editing for manual transactions only (imported amounts are read-only)
+- Audit log viewer at /settings/data (paginated, shows all field-level changes)
+- GET /api/audit-log endpoint
+- Empty state on /transactions when no results in current month
+- Backup created: data/backups/pre-037-20260617-111603.db
+
+QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS. Baseline 1095 tx intact.
+0 live transactions voided. Financial totals unchanged.
 
 ## Known pending items
 

@@ -226,20 +226,20 @@ export function getTransactions(params: {
   kind?: TransactionKindFilter;
   provider?: string;
   credentialIds?: number[];
-  businessUnit?: string;
-  classificationStatus?: string;
-  financialNature?: string;
+  businessUnit?: string | string[];
+  classificationStatus?: string | string[];
+  financialNature?: string | string[];
   cashFlowType?: string;
   pnlImpact?: string;
   minAmount?: number;
   maxAmount?: number;
 }) {
   const searchParams = new URLSearchParams();
-  const multiKeys = new Set(["categoryIds", "credentialIds"]);
+  const multiKeys = new Set(["categoryIds", "credentialIds", "businessUnit", "classificationStatus", "financialNature"]);
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined) return;
     if (multiKeys.has(key) && Array.isArray(value)) {
-      for (const id of value) searchParams.append(key, String(id));
+      for (const v of value) searchParams.append(key, String(v));
       return;
     }
     searchParams.set(key, String(value));
@@ -322,6 +322,48 @@ export function setTransactionKind(id: number, kind: TransactionKind) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kind }),
   });
+}
+
+export function voidTransaction(id: number, reason: string) {
+  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ void: { reason } }),
+  });
+}
+
+export function unvoidTransaction(id: number) {
+  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ unvoid: true }),
+  });
+}
+
+export function updateTransactionAmount(id: number, chargedAmount: number) {
+  return fetchJSON<{ success: boolean }>(`/api/transactions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amountEdit: { chargedAmount } }),
+  });
+}
+
+export interface AuditLogEntry {
+  id: number;
+  transactionId: number | null;
+  transactionDescription: string | null;
+  action: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  changedAt: string;
+  context: string | null;
+}
+
+export function getAuditLog(limit = 50, offset = 0) {
+  return fetchJSON<{ entries: AuditLogEntry[]; total: number }>(
+    `/api/audit-log?limit=${limit}&offset=${offset}`
+  );
 }
 
 export function setTransactionExcluded(

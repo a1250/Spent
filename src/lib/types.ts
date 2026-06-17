@@ -114,6 +114,7 @@ export interface Transaction {
   importRowId: number | null;
   sourceCategory: string | null;
   note: string | null;
+  voidReason: string | null;
   createdAt: string;
   updatedAt: string;
 }

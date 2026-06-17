@@ -13,10 +13,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Trash2, AlertTriangle, EyeOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, History, Trash2, AlertTriangle, EyeOff } from "lucide-react";
 import {
   deleteAllTransactions,
   deleteExcludedMerchantRule,
+  getAuditLog,
   getSettings,
   listExcludedMerchants,
   updateSettings,
@@ -52,10 +53,116 @@ export default function DataSettingsPage() {
           <code>data/spent.db</code> · <code>data/.encryption-key</code>
         </div>
       </SettingCard>
+      <AuditLogCard />
       <ExcludedMerchantsCard />
       <DangerZone />
       <WorkspaceDangerCard />
     </SectionShell>
+  );
+}
+
+const PAGE_SIZE = 20;
+
+function AuditLogCard() {
+  const [offset, setOffset] = useState(0);
+  const { data, isLoading } = useQuery({
+    queryKey: ["audit-log", offset],
+    queryFn: () => getAuditLog(PAGE_SIZE, offset),
+  });
+
+  const entries = data?.entries ?? [];
+  const total = data?.total ?? 0;
+  const page = Math.floor(offset / PAGE_SIZE) + 1;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  function formatField(field: string | null) {
+    if (!field) return "";
+    return field.replace(/_/g, " ");
+  }
+
+  function formatVal(val: string | null) {
+    if (val == null || val === "") return <span className="text-muted-foreground/50">—</span>;
+    return val;
+  }
+
+  return (
+    <SettingCard
+      title="Transaction History"
+      description="Audit log of all field-level changes to transactions."
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-muted-foreground">
+          {total === 0 ? "No entries yet" : `${total} total entries`}
+        </p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={offset === 0}
+              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              className="rounded p-1 hover:bg-accent disabled:opacity-40"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={offset + PAGE_SIZE >= total}
+              onClick={() => setOffset(offset + PAGE_SIZE)}
+              className="rounded p-1 hover:bg-accent disabled:opacity-40"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground">Loading...</div>
+      ) : entries.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-6 text-center">
+          <History className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">
+            No audit entries yet. Changes to transactions will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/30">
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">When</th>
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">Transaction</th>
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">Action</th>
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">Field</th>
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">From</th>
+                <th className="px-3 py-2 text-start font-medium text-muted-foreground">To</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {entries.map((entry) => (
+                <tr key={entry.id} className="hover:bg-muted/20">
+                  <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                    {entry.changedAt.slice(0, 16).replace("T", " ")}
+                  </td>
+                  <td className="px-3 py-2 max-w-[140px] truncate">
+                    {entry.transactionDescription ?? (
+                      <span className="text-muted-foreground/50">deleted</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 font-medium">{entry.action}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{formatField(entry.fieldName)}</td>
+                  <td className="px-3 py-2 max-w-[100px] truncate">{formatVal(entry.oldValue)}</td>
+                  <td className="px-3 py-2 max-w-[100px] truncate">{formatVal(entry.newValue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SettingCard>
   );
 }
 

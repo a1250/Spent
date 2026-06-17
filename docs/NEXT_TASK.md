@@ -1,94 +1,93 @@
 # Next Task
 
-## Phase 2Y.1 - Business Unit Usage Review and Safe Initial Cleanup
+## Phase 2Z - Dynamic Transaction Management
 
-Status: COMPLETE (no data mutation warranted)
+Status: COMPLETE (commit 369b6b2, not pushed)
 
-### Outcome
-
-Zero deterministic candidates were found. All other/unknown assignments were via user-approved
-rules or manual review. No data mutated.
+All 6 deliverables implemented and QA verified (tsc PASS, build PASS, dedup 8/8,
+learning-policy 36/36). Baseline 1095 transactions intact.
 
 ---
 
-## Phase 2Z - Dynamic Transaction Management
+## Phase 3A - Transaction Management Polish + Void Support
 
-Status: APPROVED FOR EXECUTION
+Status: COMPLETE (local, not pushed)
+
+### Deliverables
+
+1. Filter UX: BU, status, and financialNature filters now use TransactionMultiFilter
+   (multi-select popover). Inactive business units excluded from filters and detail sheet.
+
+2. Void/unvoid: migration 037 adds void_reason TEXT. PATCH /api/transactions/[id] with
+   body `{void: {reason}}` or `{unvoid: true}`. TransactionDetailSheet shows "Void
+   transaction" button with confirmation UI and reason input. Voided transactions show
+   "Voided" badge and are excluded from all financial totals via is_excluded=1.
+
+3. Amount editing: TransactionDetailSheet shows editable amount field only when
+   provider='manual'. Imported transaction amounts are read-only (with explanation).
+   Amount edits are audit logged via updateManualTransactionAmount.
+
+4. Audit log viewer: GET /api/audit-log?limit=N&offset=N. /settings/data page shows
+   a "Transaction History" section with paginated table (action, field, old, new, when).
+
+5. Empty states: /transactions shows an empty-state card with "Add transaction" CTA
+   when no transactions exist in the current month.
+
+### QA results
+
+- tsc PASS, build PASS
+- dedup 8/8, learning-policy 36/36
+- 0 live transactions voided
+- DB baseline: 1095 transactions, 1924 import_rows, 652 rules, 704 manually_approved,
+  381 needs_review, 12 business_units
+- Backup: data/backups/pre-037-20260617-111603.db (3.5MB, verified)
+- Void/unvoid tested on sandbox - correct DB state and audit log
+- Multi-filter tested: financialNature, classificationStatus, businessUnit arrays all work
+- Financial totals confirmed excluded voided transactions
+- No rules created, no learning triggered, no existing transactions mutated
+
+---
+
+## Package 2 + 3 - Report Drilldown and Import History
+
+Status: AWAITING APPROVAL
 
 ### Objective
 
-Make BudgetWise a dynamic working system where users can add, edit, move, and manage
-transactions as new data arrives. The 381 historical needs_review transactions are a backlog,
-not a blocker. This phase does not address that backlog.
+Make reports interactive (click category/BU/month -> see filtered transactions) and add
+import history page with per-credential "last imported" dates.
 
-### Scope
+### Package 2: Report Drilldown
 
-1. Transaction list / management page at /transactions
-   - Month/date, category, business unit, classification status, financial nature,
-     cash-flow type, P&L impact, source/account filters
-   - Merchant/description search
-   - Min/max amount
-   - Pagination
-   - Sort by date and amount
+1. URL-based filter hydration
+   - TransactionsPage reads `month`, `categoryId`, `businessUnit` from URL search params
+   - Next.js `useSearchParams()` hydrates initial filter state
 
-2. Single transaction editing (sheet or edit page)
-   - Editable: date, description, counterparty, category, business unit,
-     financial_nature, cash_flow_type, pnl_impact, classification_status, note
-   - Amount edit only if safe and intentional
-   - Preserve: import batch linkage, import row linkage, source metadata,
-     original imported values
+2. Monthly report drilldown
+   - Category rows in `/reports/monthly` navigate to `/transactions?month=...&categoryId=...`
 
-3. Bulk editing
-   - Select multiple transactions
-   - Change: category, business unit, financial_nature, cash_flow_type,
-     pnl_impact, classification status
-   - Show selected count and confirmation
-   - Update only explicitly selected fields
-   - Do NOT create rules automatically
-   - Do NOT change imported source metadata
+3. P&L report drilldown
+   - BU column rows navigate to `/transactions?month=...&businessUnit=...`
+   - Add month-over-month delta column (client-side, from existing data)
 
-4. Manual transaction creation
-   - Fields: date, description, amount, direction, category, business unit,
-     financial_nature, cash_flow_type, pnl_impact, optional note
-   - Clearly marked as manual (not imported)
-   - Use schema-consistent source marker
+4. Business unit dashboard drilldown
+   - "View all" link to `/transactions?businessUnit=slug`
 
-5. Audit history
-   - Check whether audit/log table already exists
-   - If missing, add migration: id, workspace_id, transaction_id, action,
-     field_name/payload, old_value, new_value, changed_at, changed_by (nullable),
-     source/context
-   - Cover: single edit, bulk edit, creation, status change, category/BU/accounting changes
+5. Coverage gauge
+   - Inline indicator on TransactionsPage: X% classified, Y needs review
 
-6. Report refresh compatibility
-   - /reports/monthly, P&L previews, cash-flow previews, BU usage counts must
-     reflect transaction changes
+### Package 3: Import History
+
+1. GET /api/import/history — import batches with row counts
+2. Import history page at /import/history (or tab)
+3. Settings > Bank: show "Last import: date" per credential
+4. GET /api/integrations extended with lastImportAt
 
 ### Prohibited
 
-- Hardcode merchants, businesses, or account names
-- Auto-create rules from edits
-- Silently overwrite import source audit fields
-- Touch batch 7 or transactions 959/960
-- Push without explicit approval
+- Do not auto-classify any needs_review transactions
+- Do not push without explicit approval
 
-### Completion criteria
+### Dependencies
 
-- All 6 features implemented and tested in browser
-- QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS
-- Docs updated
-- Local commit(s) only; push requires explicit approval
-
----
-
-## Status: COMPLETE (local, awaiting explicit push approval)
-
-All 6 Phase 2Z deliverables implemented:
-1. Extended transaction list filters (BU, classification status, financial nature, cash flow, P&L, amount)
-2. Single transaction editing via TransactionDetailSheet
-3. Bulk editing via TransactionsTable checkbox selection + BulkEditBar
-4. Manual transaction creation via TransactionCreateDialog (provider='manual')
-5. Audit history via transaction_audit_log (migration 036)
-6. All report query keys invalidated on mutation
-
-QA: tsc PASS, build PASS, dedup 8/8, learning-policy 36/36. Baseline 1095 tx intact.
+Phase 3A commit required before starting.

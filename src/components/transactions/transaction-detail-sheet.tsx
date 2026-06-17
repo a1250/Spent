@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AlertTriangle } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -21,7 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { listBusinessUnits, updateTransaction } from "@/lib/api";
+import {
+  listBusinessUnits,
+  updateTransaction,
+  voidTransaction,
+  unvoidTransaction,
+  updateTransactionAmount,
+} from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import type {
   BusinessUnitRecord,
@@ -90,6 +97,7 @@ export function TransactionDetailSheet({
   onSaved,
 }: Props) {
   const queryClient = useQueryClient();
+  const isManual = transaction.provider === "manual";
 
   const [date, setDate] = useState(transaction.date.slice(0, 10));
   const [description, setDescription] = useState(transaction.description);
@@ -109,7 +117,16 @@ export function TransactionDetailSheet({
   );
   const [note, setNote] = useState(transaction.note ?? "");
 
-  // Reset form when transaction changes
+  // Amount editing — only for manual transactions
+  const [amountStr, setAmountStr] = useState(
+    String(Math.abs(transaction.chargedAmount))
+  );
+  const [amountDirty, setAmountDirty] = useState(false);
+
+  // Void confirmation UI
+  const [confirmingVoid, setConfirmingVoid] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
+
   useEffect(() => {
     setDate(transaction.date.slice(0, 10));
     setDescription(transaction.description);
@@ -122,6 +139,10 @@ export function TransactionDetailSheet({
     setClassificationStatus(transaction.classificationStatus);
     setBusinessUnit(transaction.businessUnit ?? "none");
     setNote(transaction.note ?? "");
+    setAmountStr(String(Math.abs(transaction.chargedAmount)));
+    setAmountDirty(false);
+    setConfirmingVoid(false);
+    setVoidReason("");
   }, [transaction]);
 
   const { data: businessUnits = [] } = useQuery<BusinessUnitRecord[]>({
@@ -129,13 +150,22 @@ export function TransactionDetailSheet({
     queryFn: () => listBusinessUnits(),
   });
 
+  const activeBusinessUnits = businessUnits.filter((bu) => bu.isActive);
+
   const parentCategories = categories.filter((c) => c.parentId === null);
   const leafCategories = categories.filter((c) => c.parentId !== null);
-  const allCategories = [...parentCategories, ...leafCategories];
-  const _ = allCategories;
+
+  function invalidateAll() {
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["summary"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["business-units"] });
+    queryClient.invalidateQueries({ queryKey: ["reports"] });
+    queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+  }
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const patch: Parameters<typeof updateTransaction>[1] = {};
       if (date !== transaction.date.slice(0, 10)) patch.date = date;
       if (description !== transaction.description) patch.description = description;
@@ -153,15 +183,26 @@ export function TransactionDetailSheet({
       if (bu !== (transaction.businessUnit ?? null)) patch.businessUnit = bu;
       const n = note.trim() || null;
       if (n !== (transaction.note ?? null)) patch.note = n;
-      return updateTransaction(transaction.id, patch);
+
+      const hasPatch = Object.keys(patch).length > 0;
+      const hasAmountChange = isManual && amountDirty;
+
+      if (!hasPatch && !hasAmountChange) return;
+
+      if (hasPatch) await updateTransaction(transaction.id, patch);
+
+      if (hasAmountChange) {
+        const newAmount = parseFloat(amountStr);
+        if (!isNaN(newAmount) && newAmount > 0) {
+          const signed =
+            transaction.chargedAmount < 0 ? -Math.abs(newAmount) : Math.abs(newAmount);
+          await updateTransactionAmount(transaction.id, signed);
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Transaction saved");
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["summary"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["business-units"] });
-      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      invalidateAll();
       onSaved();
       onClose();
     },
@@ -170,8 +211,34 @@ export function TransactionDetailSheet({
     },
   });
 
+  const voidMutation = useMutation({
+    mutationFn: () =>
+      voidTransaction(transaction.id, voidReason.trim() || "voided by user"),
+    onSuccess: () => {
+      toast.success("Transaction voided");
+      invalidateAll();
+      onClose();
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Void failed");
+    },
+  });
+
+  const unvoidMutation = useMutation({
+    mutationFn: () => unvoidTransaction(transaction.id),
+    onSuccess: () => {
+      toast.success("Transaction restored");
+      invalidateAll();
+      onClose();
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Restore failed");
+    },
+  });
+
   const amountDisplay = formatCurrency(Math.abs(transaction.chargedAmount), "ILS");
   const isIncome = transaction.chargedAmount > 0;
+  const isVoided = transaction.isExcluded && transaction.voidReason != null;
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -181,18 +248,30 @@ export function TransactionDetailSheet({
             Edit Transaction
           </SheetTitle>
           <div className="mt-1 rounded-lg bg-muted/40 px-3 py-2">
-            <div className="font-medium">{transaction.description}</div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{transaction.description}</span>
+              {transaction.provider === "manual" && (
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+                  Manual
+                </span>
+              )}
+              {isVoided && (
+                <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">
+                  Voided
+                </span>
+              )}
+            </div>
             <div className="text-xs text-muted-foreground">
               {transaction.date.slice(0, 10)} &middot;{" "}
               <span style={{ color: isIncome ? "var(--status-on-track)" : "var(--status-over)" }}>
                 {isIncome ? "+" : "-"}{amountDisplay}
               </span>
-              {transaction.provider === "manual" && (
-                <span className="ms-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
-                  Manual
-                </span>
-              )}
             </div>
+            {isVoided && transaction.voidReason && (
+              <p className="mt-1 text-xs text-destructive/80">
+                Void reason: {transaction.voidReason}
+              </p>
+            )}
           </div>
         </SheetHeader>
 
@@ -224,6 +303,31 @@ export function TransactionDetailSheet({
                 </Select>
               </div>
             </div>
+
+            {/* Amount — editable only for manual transactions */}
+            <div className="space-y-1.5">
+              <Label>
+                Amount (ILS)
+                {!isManual && (
+                  <span className="ms-2 text-xs text-muted-foreground font-normal">
+                    — read-only for imported transactions
+                  </span>
+                )}
+              </Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amountStr}
+                onChange={(e) => {
+                  setAmountStr(e.target.value);
+                  setAmountDirty(true);
+                }}
+                disabled={!isManual}
+                className="h-9"
+              />
+            </div>
+
             <div className="space-y-1.5">
               <Label>Description</Label>
               <Input
@@ -277,7 +381,7 @@ export function TransactionDetailSheet({
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Unassigned</SelectItem>
-                  {businessUnits.map((bu) => (
+                  {activeBusinessUnits.map((bu) => (
                     <SelectItem key={bu.slug} value={bu.slug}>{bu.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -365,6 +469,74 @@ export function TransactionDetailSheet({
               )}
             </div>
           )}
+
+          {/* Void / unvoid section */}
+          <div className="rounded-lg border border-destructive/20 px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive/70" />
+              <p className="text-xs font-semibold text-destructive/80 uppercase tracking-wide">
+                {isVoided ? "Voided" : "Danger zone"}
+              </p>
+            </div>
+
+            {isVoided ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  This transaction is excluded from all financial totals.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => unvoidMutation.mutate()}
+                  disabled={unvoidMutation.isPending}
+                >
+                  {unvoidMutation.isPending ? "Restoring..." : "Restore transaction"}
+                </Button>
+              </div>
+            ) : confirmingVoid ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Voided transactions are excluded from P&L and cash flow totals but remain in the database.
+                </p>
+                <Input
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  placeholder="Reason (optional)"
+                  className="h-8 text-xs"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => voidMutation.mutate()}
+                    disabled={voidMutation.isPending}
+                  >
+                    {voidMutation.isPending ? "Voiding..." : "Confirm void"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setConfirmingVoid(false); setVoidReason(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmingVoid(true)}
+              >
+                Void transaction
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t px-6 py-4">
@@ -379,7 +551,7 @@ export function TransactionDetailSheet({
           <Button
             size="sm"
             onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || isVoided}
           >
             {saveMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>

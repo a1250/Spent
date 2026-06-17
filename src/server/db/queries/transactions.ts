@@ -157,10 +157,10 @@ interface QueryParams {
   /** @deprecated Use credentialIds */
   credentialId?: number;
   credentialIds?: number[];
-  // Phase 2Z filters
-  businessUnit?: string;
-  classificationStatus?: string;
-  financialNature?: string;
+  // Phase 2Z / 3A filters (accept single value or array for multi-select)
+  businessUnit?: string | string[];
+  classificationStatus?: string | string[];
+  financialNature?: string | string[];
   cashFlowType?: string;
   pnlImpact?: string;
   minAmount?: number;
@@ -246,19 +246,41 @@ export function queryTransactions(
         : undefined;
   appendCredentialIdsFilter(conditions, values, credentialIds, "t.");
 
-  if (params.businessUnit === "none") {
-    conditions.push("t.business_unit IS NULL");
-  } else if (params.businessUnit) {
-    conditions.push("t.business_unit = ?");
-    values.push(params.businessUnit);
+  const buVals: string[] = Array.isArray(params.businessUnit)
+    ? params.businessUnit
+    : params.businessUnit != null
+      ? [params.businessUnit as string]
+      : [];
+  if (buVals.length > 0) {
+    const hasNone = buVals.includes("none");
+    const slugs = buVals.filter((v) => v !== "none");
+    const parts: string[] = [];
+    if (hasNone) parts.push("t.business_unit IS NULL");
+    if (slugs.length > 0) {
+      parts.push(`t.business_unit IN (${slugs.map(() => "?").join(",")})`);
+      for (const s of slugs) values.push(s);
+    }
+    if (parts.length > 0) conditions.push(`(${parts.join(" OR ")})`);
   }
-  if (params.classificationStatus) {
-    conditions.push("t.classification_status = ?");
-    values.push(params.classificationStatus);
+
+  const statusVals: string[] = Array.isArray(params.classificationStatus)
+    ? params.classificationStatus
+    : params.classificationStatus != null
+      ? [params.classificationStatus as string]
+      : [];
+  if (statusVals.length > 0) {
+    conditions.push(`t.classification_status IN (${statusVals.map(() => "?").join(",")})`);
+    for (const s of statusVals) values.push(s);
   }
-  if (params.financialNature) {
-    conditions.push("t.financial_nature = ?");
-    values.push(params.financialNature);
+
+  const natureVals: string[] = Array.isArray(params.financialNature)
+    ? params.financialNature
+    : params.financialNature != null
+      ? [params.financialNature as string]
+      : [];
+  if (natureVals.length > 0) {
+    conditions.push(`t.financial_nature IN (${natureVals.map(() => "?").join(",")})`);
+    for (const n of natureVals) values.push(n);
   }
   if (params.cashFlowType) {
     conditions.push("t.cash_flow_type = ?");
@@ -625,6 +647,7 @@ interface TransactionRow {
   import_batch_id: number | null;
   import_row_id: number | null;
   note: string | null;
+  void_reason: string | null;
   source_category?: string | null;
   created_at: string;
   updated_at: string;
@@ -676,6 +699,7 @@ export function mapTransactionRow(row: unknown): TransactionWithCategory {
     importRowId: r.import_row_id ?? null,
     sourceCategory: r.source_category ?? null,
     note: r.note ?? null,
+    voidReason: r.void_reason ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     categoryName: r.category_name ?? null,
@@ -1249,4 +1273,152 @@ export function createManualTransaction(
   const tx = getTransaction(workspaceId, newId);
   if (!tx) throw new Error("Failed to fetch newly created transaction");
   return tx;
+}
+
+// ── Phase 3A: void / unvoid ───────────────────────────────────────────────────
+
+export function voidTransaction(
+  workspaceId: number,
+  id: number,
+  reason: string
+): { voided: boolean } {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT id FROM transactions WHERE workspace_id = ? AND id = ?")
+    .get(workspaceId, id);
+  if (!row) return { voided: false };
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE transactions SET is_excluded = 1, void_reason = ?, updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    ).run(reason, workspaceId, id);
+    logAuditEntry(workspaceId, id, "void", "is_excluded", "0", "1", reason);
+    logAuditEntry(workspaceId, id, "void", "void_reason", null, reason, "void");
+  })();
+
+  return { voided: true };
+}
+
+export function unvoidTransaction(
+  workspaceId: number,
+  id: number
+): { unvoided: boolean } {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT id FROM transactions WHERE workspace_id = ? AND id = ? AND is_excluded = 1")
+    .get(workspaceId, id);
+  if (!row) return { unvoided: false };
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE transactions SET is_excluded = 0, void_reason = NULL, updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    ).run(workspaceId, id);
+    logAuditEntry(workspaceId, id, "unvoid", "is_excluded", "1", "0", "unvoid");
+  })();
+
+  return { unvoided: true };
+}
+
+// ── Phase 3A: amount edit for manual transactions ─────────────────────────────
+
+export function updateManualTransactionAmount(
+  workspaceId: number,
+  id: number,
+  chargedAmount: number
+): { updated: boolean } {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT charged_amount, provider FROM transactions WHERE workspace_id = ? AND id = ?"
+    )
+    .get(workspaceId, id) as { charged_amount: number; provider: string } | undefined;
+
+  if (!row || row.provider !== "manual") return { updated: false };
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE transactions
+       SET charged_amount = ?, original_amount = ?, updated_at = datetime('now')
+       WHERE workspace_id = ? AND id = ?`
+    ).run(chargedAmount, chargedAmount, workspaceId, id);
+    logAuditEntry(
+      workspaceId,
+      id,
+      "edit",
+      "charged_amount",
+      String(row.charged_amount),
+      String(chargedAmount),
+      "manual_amount_edit"
+    );
+  })();
+
+  return { updated: true };
+}
+
+// ── Phase 3A: audit log viewer ────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: number;
+  transactionId: number | null;
+  transactionDescription: string | null;
+  action: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  changedAt: string;
+  context: string | null;
+}
+
+export function getAuditLog(
+  workspaceId: number,
+  limit = 50,
+  offset = 0
+): { entries: AuditLogEntry[]; total: number } {
+  const db = getDb();
+
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) as count FROM transaction_audit_log WHERE workspace_id = ?")
+      .get(workspaceId) as { count: number }
+  ).count;
+
+  const rows = db
+    .prepare(
+      `SELECT al.id, al.transaction_id, t.description AS transaction_description,
+              al.action, al.field_name, al.old_value, al.new_value,
+              al.changed_at, al.context
+       FROM transaction_audit_log al
+       LEFT JOIN transactions t ON al.transaction_id = t.id
+       WHERE al.workspace_id = ?
+       ORDER BY al.changed_at DESC, al.id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(workspaceId, limit, offset) as Array<{
+      id: number;
+      transaction_id: number | null;
+      transaction_description: string | null;
+      action: string;
+      field_name: string | null;
+      old_value: string | null;
+      new_value: string | null;
+      changed_at: string;
+      context: string | null;
+    }>;
+
+  return {
+    entries: rows.map((r) => ({
+      id: r.id,
+      transactionId: r.transaction_id,
+      transactionDescription: r.transaction_description,
+      action: r.action,
+      fieldName: r.field_name,
+      oldValue: r.old_value,
+      newValue: r.new_value,
+      changedAt: r.changed_at,
+      context: r.context,
+    })),
+    total,
+  };
 }

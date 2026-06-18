@@ -13,6 +13,7 @@ import {
   ChartNoAxesCombined,
   Building2,
   CalendarDays,
+  CalendarClock,
   Landmark,
   Settings as SettingsIcon,
   Star,
@@ -98,6 +99,12 @@ const NAV: NavDef[] = [
     labelKey: "monthlyBreakdown",
     Icon: CalendarDays,
     match: (p: string) => p.startsWith("/reports/monthly"),
+  },
+  {
+    href: "/reports/forecast",
+    labelKey: "forecast",
+    Icon: CalendarClock,
+    match: (p: string) => p.startsWith("/reports/forecast"),
   },
 ];
 

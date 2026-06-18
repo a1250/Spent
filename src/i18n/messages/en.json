@@ -41,6 +41,7 @@
     "cashFlow": "Cash Flow",
     "businessUnits": "Business Units",
     "monthlyBreakdown": "Monthly Breakdown",
+    "forecast": "Forecast",
     "settings": "Settings",
     "starOnGitHub": "Star on GitHub",
     "brandTagline": "YOUR MONEY · OPEN SOURCE"
@@ -340,7 +341,8 @@
       "ai": "AI provider",
       "categories": "Categories",
       "data": "Data & privacy",
-      "businessUnits": "Business Units"
+      "businessUnits": "Business Units",
+      "recurringPatterns": "Recurring Patterns"
     },
     "workspace": {
       "nameTitle": "Workspace name",

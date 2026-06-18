@@ -129,8 +129,10 @@ The following financial_nature values are excluded from recurring-expense P&L de
 
 ## Future functionality
 
-### Forecast UI is pending Checkpoint 3 approval
-The forecast backend (migration 038, detection service, API) is complete. The forecast dashboard (/reports/forecast), pattern management (/settings/recurring), and forecast-vs-actual overlay are pending explicit approval to build.
+### Forecast UI is complete (Checkpoint 3 done)
+The forecast backend (migration 038, detection service, API) and UI are complete. Includes
+/reports/forecast dashboard with month navigation, detection sheet, pattern confirmation,
+and /settings/recurring for pattern management. Local only, not yet pushed.
 
 ### Multi-user / auth is out of scope for Phase 1
 The app is single-workspace for Phase 1. Multi-user support is deferred.

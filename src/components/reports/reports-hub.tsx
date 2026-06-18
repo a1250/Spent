@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Building2,
+  CalendarClock,
   CalendarDays,
   ChartNoAxesCombined,
   FileChartColumn,
@@ -22,6 +23,7 @@ import {
   getImportHealth,
   getMonthlyCashFlowPreview,
   getRuleEffectivenessReport,
+  listForecastPatterns,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +57,10 @@ export function ReportsHubPage() {
     queryKey: ["rule-effectiveness"],
     queryFn: getRuleEffectivenessReport,
   });
+  const forecastQuery = useQuery({
+    queryKey: ["forecast-patterns"],
+    queryFn: () => listForecastPatterns(),
+  });
 
   const dashboard = dashboardQuery.data;
   const quality = dataQualityQuery.data?.summary;
@@ -64,6 +70,11 @@ export function ReportsHubPage() {
   );
   const businessInternalMovement =
     cashFlowQuery.data?.scopeSummaries.business.internalMovementTotal;
+  const confirmedPatterns =
+    forecastQuery.data?.patterns.filter(
+      (p: import("@/lib/types").RecurringPattern) =>
+        p.isUserConfirmed && p.isActive
+    ).length ?? 0;
 
   return (
     <>
@@ -319,6 +330,29 @@ export function ReportsHubPage() {
             }
             warning="Needs-review rows are excluded from all financial totals."
             preview
+          />
+
+          <ReportCard
+            href="/reports/forecast"
+            eyebrow="Expected cash movements"
+            title="Forecast"
+            description="Track expected recurring charges and income against actuals. Detect patterns, confirm them, and see what is missing each month."
+            icon={CalendarClock}
+            accent="teal"
+            metric={
+              forecastQuery.data
+                ? integer.format(confirmedPatterns)
+                : "Loading..."
+            }
+            metricLabel="Confirmed recurring patterns"
+            note={
+              forecastQuery.data
+                ? confirmedPatterns === 0
+                  ? "Run detection to find recurring patterns"
+                  : `${integer.format(forecastQuery.data.patterns.length)} total patterns`
+                : "Loading patterns"
+            }
+            warning="Forecast is advisory only and never modifies transactions."
           />
         </section>
 

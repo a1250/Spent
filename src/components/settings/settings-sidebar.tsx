@@ -10,6 +10,7 @@ import {
   Sparkles,
   Layers,
   Building2,
+  CalendarClock,
   ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,12 @@ const GROUPS: NavGroup[] = [
         labelKey: "businessUnits",
         Icon: Building2,
         match: (p) => p.startsWith("/settings/business-units"),
+      },
+      {
+        href: "/settings/recurring",
+        labelKey: "recurringPatterns",
+        Icon: CalendarClock,
+        match: (p) => p.startsWith("/settings/recurring"),
       },
     ],
   },

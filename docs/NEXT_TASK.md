@@ -116,9 +116,9 @@ import history page with per-credential "last imported" dates.
 
 ## Package 4 - Forecast / Expected Cash Movements
 
-Status: IN PROGRESS — Checkpoint 2 complete (backend), awaiting approval for Checkpoint 3 (UI)
+Status: COMPLETE (local, not yet pushed) — awaiting push approval
 
-### Checkpoint 2 (complete, not yet committed)
+### Checkpoint 2 (complete, commit 697b790)
 
 - Migration 038: `recurring_patterns` table
 - Detection service: read-only, returns suggestions, never persists
@@ -128,9 +128,48 @@ Status: IN PROGRESS — Checkpoint 2 complete (backend), awaiting approval for C
 - 34 detection tests passing
 - Backup: data/backups/pre-038-20260618-102456.db
 
-### Checkpoint 3 (pending approval)
+### Checkpoint 3 (complete, local)
 
-- /reports/forecast page
-- Pattern management at /settings/recurring
-- Forecast vs actual overlay in P&L report
-- Final QA + commit
+- `/reports/forecast` page: month navigation, forecast vs actual summary cards, items
+  grouped by P&L income/expense, non-P&L cash in/out, uncertain, installment advisory
+- Run Detection sheet: scans history, shows candidates by confidence band (high/medium/low),
+  income advisory warning, confirm candidate dialog, rejected candidates collapsible
+- Confirm candidate dialog: pre-fills from candidate, income advisory, all accounting fields
+- Add pattern manually: create dialog with all fields and optional immediate confirmation
+- `/settings/recurring` page: list patterns (confirmed/pending/all filter), edit sheet,
+  toggle active/confirmed, deactivate, create new
+- App sidebar nav: Forecast added under reports section
+- Reports hub: Forecast card with confirmed pattern count
+- Settings sidebar: Recurring Patterns added under Categories group
+- Translations: forecast + recurringPatterns keys in en.json and he.json
+
+### QA
+
+- tsc PASS, build PASS
+- /reports/forecast and /settings/recurring visible in build output
+- 0 live recurring_patterns rows (no patterns created during testing)
+- All 10 DB baselines intact
+
+---
+
+## Package 5 - Product Readiness
+
+Status: AWAITING APPROVAL
+
+### Objective
+
+Fill in gaps that block daily use: backup/restore UI, complete empty states, audit log
+viewer, error handling, and workspace readiness for new users.
+
+### Scope (recommended)
+
+1. Backup/restore UI at /settings/data
+   - POST /api/data/backup, GET /api/data/backups, POST /api/data/restore
+2. Empty states on all major pages
+3. Graceful error boundaries on report components
+4. Fresh workspace flow verification (no hardcoded IDs)
+
+### Prohibited
+
+- Do not auto-classify any needs_review transactions
+- Do not push without explicit approval

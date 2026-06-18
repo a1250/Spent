@@ -41,6 +41,7 @@
     "cashFlow": "תזרים מזומנים",
     "businessUnits": "יחידות עסקיות",
     "monthlyBreakdown": "פירוט חודשי",
+    "forecast": "תחזית",
     "settings": "הגדרות",
     "starOnGitHub": "תייגו ב־GitHub",
     "brandTagline": "הכסף שלכם · קוד פתוח"
@@ -340,7 +341,8 @@
       "ai": "ספק AI",
       "categories": "קטגוריות",
       "data": "נתונים ופרטיות",
-      "businessUnits": "יחידות עסקיות"
+      "businessUnits": "יחידות עסקיות",
+      "recurringPatterns": "תבניות חוזרות"
     },
     "workspace": {
       "nameTitle": "שם סביבת העבודה",

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { Building2, Plus, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, Building2, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
@@ -39,6 +40,15 @@ import type { TransactionWithCategory } from "@/lib/types";
 import { TransactionDetailSheet } from "@/components/transactions/transaction-detail-sheet";
 import { TransactionCreateDialog } from "@/components/transactions/transaction-create-dialog";
 
+function parseMonthParam(month: string | null): Date {
+  if (!month) return new Date();
+  const parts = month.split("-");
+  const year = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!year || !m || m < 1 || m > 12 || isNaN(year) || isNaN(m)) return new Date();
+  return new Date(year, m - 1, 1);
+}
+
 const CLASSIFICATION_STATUS_OPTIONS = [
   { value: "manually_approved", label: "Approved" },
   { value: "auto_classified", label: "Auto-classified" },
@@ -66,24 +76,60 @@ const FINANCIAL_NATURE_OPTIONS = [
 export function TransactionsPage() {
   const t = useTranslations("transactions");
   const locale = useLocale() as Locale;
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<number[]>([]);
-  const [accountFilter, setAccountFilter] = useState<number[]>([]);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Initialize filter state from URL params (lazy initializers run only once on mount)
+  const [selectedDate, setSelectedDate] = useState(() =>
+    parseMonthParam(searchParams.get("month"))
+  );
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState<number[]>(() =>
+    searchParams.getAll("categoryId").map(Number).filter((n) => !isNaN(n) && n > 0)
+  );
+  const [accountFilter, setAccountFilter] = useState<number[]>(() =>
+    searchParams.getAll("accountId").map(Number).filter((n) => !isNaN(n) && n > 0)
+  );
   const [page, setPage] = useState(0);
-  const [kind, setKind] = useState<TransactionKindFilter>("all");
+  const [kind, setKind] = useState<TransactionKindFilter>(() => {
+    const k = searchParams.get("kind");
+    if (k === "income" || k === "expense") return k;
+    return "all";
+  });
   const [sortField, setSortField] = useState<TransactionSortField>("date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
-  // Phase 3A: multi-select filters
-  const [buFilter, setBuFilter] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [natureFilter, setNatureFilter] = useState<string[]>([]);
+  // Multi-select filters (hydrated from URL)
+  const [buFilter, setBuFilter] = useState<string[]>(() =>
+    searchParams.getAll("businessUnit")
+  );
+  const [statusFilter, setStatusFilter] = useState<string[]>(() =>
+    searchParams.getAll("classificationStatus")
+  );
+  const [natureFilter, setNatureFilter] = useState<string[]>(() =>
+    searchParams.getAll("financialNature")
+  );
 
   // Phase 2Z: selection and dialogs
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingTxn, setEditingTxn] = useState<TransactionWithCategory | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Sync filter state back to URL so links are bookmarkable and back/forward works
+  useEffect(() => {
+    const params = new URLSearchParams();
+    const { from } = getMonthRange(selectedDate);
+    params.set("month", from.slice(0, 7));
+    if (search) params.set("search", search);
+    if (kind !== "all") params.set("kind", kind);
+    for (const id of categoryFilter) params.append("categoryId", String(id));
+    for (const id of accountFilter) params.append("accountId", String(id));
+    for (const bu of buFilter) params.append("businessUnit", bu);
+    for (const s of statusFilter) params.append("classificationStatus", s);
+    for (const n of natureFilter) params.append("financialNature", n);
+    router.replace(`/transactions?${params.toString()}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, search, kind, categoryFilter, accountFilter, buFilter, statusFilter, natureFilter]);
 
   const filterOptions: { value: TransactionKindFilter; label: string }[] = [
     { value: "all", label: t("filterAll") },
@@ -344,6 +390,21 @@ export function TransactionsPage() {
               className="rounded-full px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               Clear filters
+            </button>
+          )}
+
+          {/* Classification coverage indicator */}
+          {summaryQuery.data && summaryQuery.data.pendingReviewCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter(["needs_review"]);
+                setPage(0);
+              }}
+              className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/8 px-3 py-1.5 text-xs text-amber-700 transition-colors hover:bg-amber-500/15 dark:text-amber-300"
+            >
+              <AlertCircle className="h-3 w-3" />
+              {summaryQuery.data.pendingReviewCount} needs review
             </button>
           )}
 

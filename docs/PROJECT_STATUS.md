@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 ## Branch
 
@@ -8,11 +8,11 @@ Last updated: 2026-06-17
 
 ## Latest pushed commit
 
-`f9bff71` - feat: add business unit management (pushed)
+`5d2ac62` - feat: polish transaction management and add void support (pushed)
 
 ## Latest local commit (not pushed)
 
-Phase 3A - Transaction Management Polish + Void Support (not yet committed)
+Package 2+3 - Report Drilldown + Import History (not yet committed)
 
 ## Verified baseline (as of f9bff71)
 
@@ -101,7 +101,7 @@ QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
 - TransactionsPage: BU and status filter dropdowns, "Add" button, select-rows toggle
 - All mutations write to transaction_audit_log
 
-### Phase 3A - Transaction Management Polish + Void Support (local, not yet committed)
+### Phase 3A - Transaction Management Polish + Void Support (commit 5d2ac62, pushed)
 
 - Migration 037: `void_reason TEXT` column on transactions
 - BU/status/financialNature filters upgraded to multi-select (TransactionMultiFilter components)
@@ -111,10 +111,34 @@ QA confirmed clean: dedup 8/8, learning-policy 36/36, tsc pass, build pass.
 - Audit log viewer at /settings/data (paginated, shows all field-level changes)
 - GET /api/audit-log endpoint
 - Empty state on /transactions when no results in current month
-- Backup created: data/backups/pre-037-20260617-111603.db
 
 QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS. Baseline 1095 tx intact.
 0 live transactions voided. Financial totals unchanged.
+
+### Package 2+3 - Report Drilldown + Import History (local, not yet committed)
+
+- URL-driven filter hydration on /transactions: `month`, `categoryId`, `businessUnit`,
+  `classificationStatus`, `financialNature`, `accountId`, `search`, `kind` all round-trip
+  via URL search params. Back/forward and bookmark support via useSearchParams + router.replace.
+  Wrapped TransactionsPage in Suspense for Next.js App Router compatibility.
+- Classification coverage indicator on /transactions: amber pill showing needs-review count,
+  clicking it filters to needs_review status.
+- Monthly breakdown drilldown: category rows link to /transactions?month=...&categoryId=...,
+  income/non-P&L nature rows link by financialNature, BU rows link by businessUnit,
+  needs-review card and coverage warning link to filtered transactions.
+- P&L report drilldown: each month row has a view-transactions icon link. New "vs Prior"
+  MoM delta column shows absolute delta + percentage vs prior month.
+- Business unit dashboard drilldown: "View all transactions" link per unit inside the
+  expanded detail panel.
+- GET /api/import/history: paginated import batch history endpoint.
+- /import/history page: full history table with batch id, adapter, status, date range,
+  row counts (total / imported / dupes / needs-review), committed date, "View batch" links.
+  Accessible from /import via "Import history" link.
+- Extended Integration type with `lastImportAt: string | null` (workspace-level, most
+  recent committed import batch).
+- Settings > Bank page shows "Last import: [date]" and "View history" link.
+
+QA: tsc PASS, build PASS, learning-policy 36/36. Baseline unchanged.
 
 ## Known pending items
 

@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Clock,
   ArrowLeft,
+  History,
   Pencil,
   Copy,
   Ban,
@@ -1572,6 +1573,16 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-10" dir="rtl">
+      <div className="flex items-center justify-end">
+        <a
+          href="/import/history"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          dir="ltr"
+        >
+          <History className="h-3.5 w-3.5" />
+          Import history
+        </a>
+      </div>
       <div className="mx-auto max-w-2xl">
         <UploadZone onUploaded={handleSelect} />
       </div>

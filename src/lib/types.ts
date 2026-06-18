@@ -963,6 +963,8 @@ export interface Integration {
   createdAt: string;
   updatedAt: string;
   lastSyncAt: string | null;
+  /** Most recent committed file import for this workspace (workspace-level, not per-credential). */
+  lastImportAt: string | null;
   transactionCount: number;
   /** True when the user has flagged this bank as needing manual 2FA (showBrowser fallback). */
   requiresManualTwoFactor: boolean;

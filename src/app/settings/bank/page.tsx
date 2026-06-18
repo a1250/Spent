@@ -60,6 +60,8 @@ export default function BankSettingsPage() {
     return stamps.sort().slice(-1)[0];
   }, [integrations]);
 
+  const lastImportAt = integrations[0]?.lastImportAt ?? null;
+
   const availableToAdd = BANK_PROVIDERS.filter((b) => b.enabled);
 
   const handleSyncAll = () => {
@@ -88,6 +90,26 @@ export default function BankSettingsPage() {
                 <span className="text-foreground/80">
                   {t("lastSync", { time: formatLastSync(lastSync, labels) })}
                 </span>
+              </>
+            ) : null}
+            {lastImportAt ? (
+              <>
+                {" · "}
+                <span className="text-foreground/80">
+                  Last import:{" "}
+                  {new Date(lastImportAt).toLocaleDateString("en-IL", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </span>
+                {" · "}
+                <a
+                  href="/import/history"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  View history
+                </a>
               </>
             ) : null}
           </div>

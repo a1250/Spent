@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ChevronDown,
+  ExternalLink,
   FileWarning,
   Landmark,
   RefreshCcw,
@@ -284,6 +285,7 @@ export function MonthlyPnLPreviewPage() {
             <MonthlyTable
               months={report.months}
               mode={report.filters.mode}
+              businessUnit={businessUnit === "all" ? undefined : businessUnit}
               openMonths={openMonths}
               onToggle={toggleMonth}
             />
@@ -518,11 +520,13 @@ function SummaryCards({ report }: { report: MonthlyPnLPreview }) {
 function MonthlyTable({
   months,
   mode,
+  businessUnit,
   openMonths,
   onToggle,
 }: {
   months: MonthlyPnLRow[];
   mode: PnLReportMode;
+  businessUnit: string | undefined;
   openMonths: Set<string>;
   onToggle: (month: string) => void;
 }) {
@@ -541,7 +545,7 @@ function MonthlyTable({
         </p>
       </div>
       <div className="overflow-x-auto rounded-2xl border bg-card">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1300px] text-sm">
           <thead>
             <tr className="border-b bg-muted/35 text-xs text-muted-foreground">
               <th className="w-10 px-3 py-3" />
@@ -558,6 +562,9 @@ function MonthlyTable({
                 Net P&L Preview
               </th>
               <th className="px-3 py-3 text-end font-medium">
+                vs Prior
+              </th>
+              <th className="px-3 py-3 text-end font-medium">
                 Uncertain P&L
               </th>
               <th className="px-3 py-3 text-center font-medium">
@@ -566,15 +573,19 @@ function MonthlyTable({
               <th className="px-3 py-3 text-center font-medium">
                 Needs review
               </th>
+              <th className="w-8 px-3 py-3" />
             </tr>
           </thead>
           <tbody>
-            {months.map((month) => {
+            {months.map((month, i) => {
               const isOpen = openMonths.has(month.month);
+              const prevNetPnL = months[i + 1]?.netPnL;
               return (
                 <MonthRows
                   key={month.month}
                   month={month}
+                  prevNetPnL={prevNetPnL}
+                  businessUnit={businessUnit}
                   isOpen={isOpen}
                   onToggle={() => onToggle(month.month)}
                 />
@@ -589,13 +600,27 @@ function MonthlyTable({
 
 function MonthRows({
   month,
+  prevNetPnL,
+  businessUnit,
   isOpen,
   onToggle,
 }: {
   month: MonthlyPnLRow;
+  prevNetPnL: number | undefined;
+  businessUnit: string | undefined;
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const delta = prevNetPnL !== undefined ? month.netPnL - prevNetPnL : undefined;
+  const deltaPercent =
+    delta !== undefined && prevNetPnL !== 0 && prevNetPnL !== undefined
+      ? (delta / Math.abs(prevNetPnL)) * 100
+      : undefined;
+
+  const txHref = businessUnit
+    ? `/transactions?month=${month.month}&businessUnit=${businessUnit}`
+    : `/transactions?month=${month.month}`;
+
   return (
     <>
       <tr className="border-b hover:bg-muted/20">
@@ -620,6 +645,31 @@ function MonthRows({
         <MoneyCell value={month.operatingExpenses} />
         <MoneyCell value={month.taxes} />
         <MoneyCell value={month.netPnL} net />
+        <td className="px-3 py-3 text-end text-xs tabular-nums">
+          {delta !== undefined ? (
+            <span
+              className={cn(
+                "font-mono",
+                delta > 0
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : delta < 0
+                    ? "text-red-700 dark:text-red-300"
+                    : "text-muted-foreground"
+              )}
+            >
+              {delta > 0 ? "+" : ""}
+              {currency.format(delta)}
+              {deltaPercent !== undefined && (
+                <span className="ms-1 text-[10px] opacity-70">
+                  ({deltaPercent > 0 ? "+" : ""}
+                  {deltaPercent.toFixed(1)}%)
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </td>
         <MoneyCell value={month.uncertainPnL} uncertain />
         <td className="px-3 py-3 text-center">
           <Badge
@@ -636,10 +686,19 @@ function MonthRows({
         <td className="px-3 py-3 text-center font-mono tabular-nums">
           {month.needsReviewCount.toLocaleString("en-US")}
         </td>
+        <td className="px-3 py-3">
+          <Link
+            href={txHref}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground"
+            title="View transactions"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </td>
       </tr>
       {isOpen && (
         <tr className="border-b bg-muted/[0.12]">
-          <td colSpan={10} className="p-0">
+          <td colSpan={12} className="p-0">
             <MonthDetails month={month} />
           </td>
         </tr>

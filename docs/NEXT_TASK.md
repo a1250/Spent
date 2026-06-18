@@ -50,7 +50,7 @@ Status: COMPLETE (local, not pushed)
 
 ## Package 2 + 3 - Report Drilldown and Import History
 
-Status: AWAITING APPROVAL
+Status: COMPLETE (local, not yet pushed)
 
 ### Objective
 
@@ -83,11 +83,39 @@ import history page with per-credential "last imported" dates.
 3. Settings > Bank: show "Last import: date" per credential
 4. GET /api/integrations extended with lastImportAt
 
+### Deliverables
+
+1. URL filter hydration on /transactions (month, categoryId, businessUnit, classificationStatus,
+   financialNature, accountId, search, kind) via useSearchParams + router.replace.
+   Suspense wrapper on TransactionsPage.
+
+2. Coverage indicator: needs-review count pill on /transactions, clicking filters to that status.
+
+3. Monthly breakdown drilldown: category rows, nature rows, BU rows, needs-review links.
+
+4. P&L report MoM delta column + drilldown link per month row.
+
+5. Business unit dashboard: "View all transactions" per unit.
+
+6. GET /api/import/history + /import/history page + "Import history" link from /import.
+
+7. Integration type extended with lastImportAt. Settings > Bank shows last import date + history link.
+
+### QA
+
+- tsc PASS, build PASS, learning-policy 36/36
+- Baseline 1095 / 1924 / 8 / 652 unchanged
+- 0 transactions mutated
+
 ### Prohibited
 
 - Do not auto-classify any needs_review transactions
 - Do not push without explicit approval
 
-### Dependencies
+---
 
-Phase 3A commit required before starting.
+## Package 4 - Forecast / Expected Cash Movements
+
+Status: AWAITING APPROVAL
+
+See plan at ~/.claude/plans/harmonic-percolating-sutton.md for full scope.

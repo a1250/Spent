@@ -440,7 +440,7 @@ function MoneyCell({ value }: { value: number }) {
 function UnitDetails({ unit }: { unit: BusinessUnitDashboardRow }) {
   return (
     <div className="space-y-5 px-5 py-5 lg:px-7">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {unit.warnings.length > 0 ? (
           unit.warnings.map((warning) => (
             <WarningBadge key={warning} warning={warning} />
@@ -453,6 +453,18 @@ function UnitDetails({ unit }: { unit: BusinessUnitDashboardRow }) {
             No immediate warning
           </Badge>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          nativeButton={false}
+          className="ms-auto gap-1.5 text-xs text-muted-foreground"
+          render={
+            <Link href={`/transactions?businessUnit=${unit.slug}`}>
+              View all transactions
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          }
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">

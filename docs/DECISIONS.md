@@ -89,6 +89,21 @@ BU, classificationStatus, and financialNature filters accept multiple values via
 URL params (e.g. `?businessUnit=a&businessUnit=b`). The server uses `IN (...)` SQL with
 special handling for the `none` sentinel (maps to `IS NULL`). Single-value usage still works.
 
+## Report drilldown and URL filters
+
+### Filter state round-trips via URL search params
+`/transactions` uses `useSearchParams()` (lazy initializer) to hydrate state on mount and
+`useEffect + router.replace` to keep the URL in sync. This enables bookmarkable filter
+combinations and browser back/forward navigation. The `useSearchParams` hook requires the
+component to be wrapped in `<Suspense>` per Next.js App Router requirements.
+
+### lastImportAt is workspace-level, not per-credential
+The `Import.lastImportAt` field returned by `GET /api/integrations` is the most recent
+`committed_at` from `import_batches` for the workspace. It is the same value for every
+credential in the list. Direct batch-to-credential mapping was not implemented because
+the `adapter_key` values do not reliably map to provider slugs. This is documented and
+acceptable for the current use case.
+
 ## Future functionality
 
 ### Forecast is required future functionality

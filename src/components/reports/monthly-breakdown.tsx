@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -66,6 +67,7 @@ function formatMonth(month: string): string {
 }
 
 export function MonthlyBreakdownPage() {
+  const router = useRouter();
   const [selectedMonth, setSelectedMonth] = useState("");
 
   const query = useQuery({
@@ -159,20 +161,28 @@ export function MonthlyBreakdownPage() {
 
         {report && (
           <>
-            <SummaryCards report={report} />
+            <SummaryCards
+              report={report}
+              onNeedsReviewClick={() =>
+                router.push(
+                  `/transactions?month=${selectedMonth}&classificationStatus=needs_review`
+                )
+              }
+            />
             {report.coverage.needsReviewTransactions > 0 && (
-              <CoverageWarning report={report} />
+              <CoverageWarning report={report} month={selectedMonth} />
             )}
             <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
               <div className="space-y-6">
-                <ExpenseCategorySection rows={report.categoryExpenseBreakdown} />
-                <IncomeBreakdownSection rows={report.incomeBreakdown} />
-                <NonPnlMovementsSection rows={report.nonPnlMovements} />
+                <ExpenseCategorySection rows={report.categoryExpenseBreakdown} month={selectedMonth} />
+                <IncomeBreakdownSection rows={report.incomeBreakdown} month={selectedMonth} />
+                <NonPnlMovementsSection rows={report.nonPnlMovements} month={selectedMonth} />
               </div>
               <div className="space-y-6">
-                <BusinessUnitSection rows={report.businessUnitBreakdown} />
+                <BusinessUnitSection rows={report.businessUnitBreakdown} month={selectedMonth} />
                 <NeedsReviewSection
                   rows={report.needsReviewTop10}
+                  month={selectedMonth}
                 />
               </div>
             </div>
@@ -183,7 +193,13 @@ export function MonthlyBreakdownPage() {
   );
 }
 
-function SummaryCards({ report }: { report: MonthlyBreakdown }) {
+function SummaryCards({
+  report,
+  onNeedsReviewClick,
+}: {
+  report: MonthlyBreakdown;
+  onNeedsReviewClick: () => void;
+}) {
   const { pnl, coverage } = report;
   const nonPnlTotal = report.nonPnlMovements.reduce(
     (sum, r) => sum + r.amount,
@@ -253,7 +269,11 @@ function SummaryCards({ report }: { report: MonthlyBreakdown }) {
           )}
         </div>
       ))}
-      <div className="rounded-2xl border bg-card p-4 sm:col-span-2 xl:col-span-1">
+      <button
+        type="button"
+        onClick={onNeedsReviewClick}
+        className="rounded-2xl border bg-card p-4 sm:col-span-2 xl:col-span-1 text-start transition-colors hover:border-amber-500/40 hover:bg-amber-500/5"
+      >
         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Needs Review
         </div>
@@ -269,13 +289,16 @@ function SummaryCards({ report }: { report: MonthlyBreakdown }) {
         <p className="mt-1 text-xs text-muted-foreground">
           {currency.format(coverage.unclassifiedValueTotal)} unclassified value
         </p>
-      </div>
+      </button>
     </section>
   );
 }
 
-function CoverageWarning({ report }: { report: MonthlyBreakdown }) {
+function CoverageWarning({ report, month }: { report: MonthlyBreakdown; month: string }) {
   const { coverage } = report;
+  const txUrl = month
+    ? `/transactions?month=${month}&classificationStatus=needs_review`
+    : `/transactions?classificationStatus=needs_review`;
   return (
     <section className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/[0.05] p-4">
       <div className="rounded-lg bg-amber-500/15 p-2">
@@ -299,8 +322,8 @@ function CoverageWarning({ report }: { report: MonthlyBreakdown }) {
         nativeButton={false}
         className="shrink-0 border-amber-600/30"
         render={
-          <Link href="/review">
-            Review
+          <Link href={txUrl}>
+            View
             <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         }
@@ -336,8 +359,10 @@ function EmptyTable({ message }: { message: string }) {
 
 function ExpenseCategorySection({
   rows,
+  month,
 }: {
   rows: MonthlyBreakdownCategoryLine[];
+  month: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -372,37 +397,44 @@ function ExpenseCategorySection({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                key={`${row.categoryId}-${row.categoryName}`}
-                className="border-b last:border-0 hover:bg-muted/20"
-              >
-                <td className="px-4 py-2.5">
-                  {row.parentName && (
-                    <span className="text-xs text-muted-foreground">
-                      {row.parentName} /
-                    </span>
-                  )}{" "}
-                  <span className="font-medium">{row.categoryName}</span>
-                </td>
-                <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
-                  {row.transactionCount}
-                </td>
-                <td className="px-4 py-2.5 text-end font-mono tabular-nums">
-                  {currency.format(row.amount)}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-rose-500/60"
-                      style={{
-                        width: `${Math.round((row.amount / max) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const href = month
+                ? `/transactions?month=${month}&categoryId=${row.categoryId}`
+                : `/transactions?categoryId=${row.categoryId}`;
+              return (
+                <tr
+                  key={`${row.categoryId}-${row.categoryName}`}
+                  className="group border-b last:border-0 hover:bg-muted/20"
+                >
+                  <td className="px-4 py-2.5">
+                    <Link href={href} className="hover:underline">
+                      {row.parentName && (
+                        <span className="text-xs text-muted-foreground">
+                          {row.parentName} /
+                        </span>
+                      )}{" "}
+                      <span className="font-medium">{row.categoryName}</span>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
+                    {row.transactionCount}
+                  </td>
+                  <td className="px-4 py-2.5 text-end font-mono tabular-nums">
+                    {currency.format(row.amount)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-rose-500/60"
+                        style={{
+                          width: `${Math.round((row.amount / max) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -412,8 +444,10 @@ function ExpenseCategorySection({
 
 function IncomeBreakdownSection({
   rows,
+  month,
 }: {
   rows: MonthlyBreakdownNatureLine[];
+  month: string;
 }) {
   return (
     <section className="space-y-3">
@@ -434,28 +468,35 @@ function IncomeBreakdownSection({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={row.financialNature}
-                  className="border-b last:border-0 hover:bg-muted/20"
-                >
-                  <td className="px-4 py-2.5 font-medium">
-                    {NATURE_LABELS[row.financialNature] ?? row.financialNature}
-                  </td>
-                  <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
-                    {row.transactionCount}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-end font-mono tabular-nums",
-                      row.financialNature === "operating_income" &&
-                        "text-emerald-700 dark:text-emerald-300"
-                    )}
+              {rows.map((row) => {
+                const href = month
+                  ? `/transactions?month=${month}&financialNature=${row.financialNature}`
+                  : `/transactions?financialNature=${row.financialNature}`;
+                return (
+                  <tr
+                    key={row.financialNature}
+                    className="border-b last:border-0 hover:bg-muted/20"
                   >
-                    {currency.format(row.amount)}
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-4 py-2.5 font-medium">
+                      <Link href={href} className="hover:underline">
+                        {NATURE_LABELS[row.financialNature] ?? row.financialNature}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
+                      {row.transactionCount}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-4 py-2.5 text-end font-mono tabular-nums",
+                        row.financialNature === "operating_income" &&
+                          "text-emerald-700 dark:text-emerald-300"
+                      )}
+                    >
+                      {currency.format(row.amount)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -466,8 +507,10 @@ function IncomeBreakdownSection({
 
 function NonPnlMovementsSection({
   rows,
+  month,
 }: {
   rows: MonthlyBreakdownNatureLine[];
+  month: string;
 }) {
   return (
     <section className="space-y-3">
@@ -490,22 +533,29 @@ function NonPnlMovementsSection({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={row.financialNature}
-                  className="border-b last:border-0 hover:bg-muted/20"
-                >
-                  <td className="px-4 py-2.5 font-medium">
-                    {NATURE_LABELS[row.financialNature] ?? row.financialNature}
-                  </td>
-                  <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
-                    {row.transactionCount}
-                  </td>
-                  <td className="px-4 py-2.5 text-end font-mono tabular-nums text-muted-foreground">
-                    {currency.format(row.amount)}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const href = month
+                  ? `/transactions?month=${month}&financialNature=${row.financialNature}`
+                  : `/transactions?financialNature=${row.financialNature}`;
+                return (
+                  <tr
+                    key={row.financialNature}
+                    className="border-b last:border-0 hover:bg-muted/20"
+                  >
+                    <td className="px-4 py-2.5 font-medium">
+                      <Link href={href} className="hover:underline">
+                        {NATURE_LABELS[row.financialNature] ?? row.financialNature}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
+                      {row.transactionCount}
+                    </td>
+                    <td className="px-4 py-2.5 text-end font-mono tabular-nums text-muted-foreground">
+                      {currency.format(row.amount)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -516,8 +566,10 @@ function NonPnlMovementsSection({
 
 function BusinessUnitSection({
   rows,
+  month,
 }: {
   rows: MonthlyBreakdownBusinessUnitLine[];
+  month: string;
 }) {
   const visibleRows = rows.filter(
     (r) => r.netPnL !== 0 || r.uncertainPnL !== 0 || r.transactionCount > 0
@@ -539,38 +591,46 @@ function BusinessUnitSection({
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => (
-                <tr
-                  key={row.businessUnit}
-                  className="border-b last:border-0 hover:bg-muted/20"
-                >
-                  <td className="px-4 py-2.5">
-                    <span className="font-medium capitalize">
-                      {row.businessUnit}
-                    </span>
-                    <span className="ms-2 text-xs text-muted-foreground">
-                      {row.transactionCount} txns
-                    </span>
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-end font-mono tabular-nums",
-                      row.netPnL > 0
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : row.netPnL < 0
-                          ? "text-red-700 dark:text-red-300"
-                          : "text-muted-foreground"
-                    )}
+              {visibleRows.map((row) => {
+                const slug = row.businessUnit ?? "none";
+                const href = month
+                  ? `/transactions?month=${month}&businessUnit=${slug}`
+                  : `/transactions?businessUnit=${slug}`;
+                return (
+                  <tr
+                    key={row.businessUnit}
+                    className="border-b last:border-0 hover:bg-muted/20"
                   >
-                    {currency.format(row.netPnL)}
-                  </td>
-                  <td className="px-4 py-2.5 text-end font-mono tabular-nums text-amber-700 dark:text-amber-300">
-                    {row.uncertainPnL !== 0
-                      ? currency.format(row.uncertainPnL)
-                      : "-"}
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-4 py-2.5">
+                      <Link href={href} className="hover:underline">
+                        <span className="font-medium capitalize">
+                          {row.businessUnit ?? "Unassigned"}
+                        </span>
+                      </Link>
+                      <span className="ms-2 text-xs text-muted-foreground">
+                        {row.transactionCount} txns
+                      </span>
+                    </td>
+                    <td
+                      className={cn(
+                        "px-4 py-2.5 text-end font-mono tabular-nums",
+                        row.netPnL > 0
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : row.netPnL < 0
+                            ? "text-red-700 dark:text-red-300"
+                            : "text-muted-foreground"
+                      )}
+                    >
+                      {currency.format(row.netPnL)}
+                    </td>
+                    <td className="px-4 py-2.5 text-end font-mono tabular-nums text-amber-700 dark:text-amber-300">
+                      {row.uncertainPnL !== 0
+                        ? currency.format(row.uncertainPnL)
+                        : "-"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -581,9 +641,14 @@ function BusinessUnitSection({
 
 function NeedsReviewSection({
   rows,
+  month,
 }: {
   rows: MonthlyBreakdownNeedsReviewRow[];
+  month: string;
 }) {
+  const allUrl = month
+    ? `/transactions?month=${month}&classificationStatus=needs_review`
+    : `/transactions?classificationStatus=needs_review`;
   return (
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
@@ -597,8 +662,8 @@ function NeedsReviewSection({
           nativeButton={false}
           className="shrink-0"
           render={
-            <Link href="/review">
-              Review all
+            <Link href={allUrl}>
+              View all
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           }

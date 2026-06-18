@@ -910,6 +910,12 @@ export function listImportBatches() {
   return fetchJSON<{ batches: ImportBatch[] }>("/api/import");
 }
 
+export function getImportHistory(limit = 50, offset = 0) {
+  return fetchJSON<{ batches: ImportBatch[]; total: number; offset: number; limit: number }>(
+    `/api/import/history?limit=${limit}&offset=${offset}`
+  );
+}
+
 export function getImportBatch(batchId: number) {
   return fetchJSON<{ batch: ImportBatch; rows: ImportRow[] }>(
     `/api/import/${batchId}`

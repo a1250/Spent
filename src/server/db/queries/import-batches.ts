@@ -137,3 +137,14 @@ export function updateImportBatchCounters(
     .prepare(`UPDATE import_batches SET ${sets.join(", ")} WHERE workspace_id = ? AND id = ?`)
     .run(...params);
 }
+
+export function getLastImportAt(workspaceId: number): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT committed_at FROM import_batches
+       WHERE workspace_id = ? AND status = 'committed' AND committed_at IS NOT NULL
+       ORDER BY committed_at DESC LIMIT 1`
+    )
+    .get(workspaceId) as { committed_at: string } | undefined;
+  return row?.committed_at ?? null;
+}

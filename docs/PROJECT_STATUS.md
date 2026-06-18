@@ -8,7 +8,7 @@ Last updated: 2026-06-18
 
 ## Latest pushed commit
 
-`25bbea4` - feat: add report drilldown and import history (pushed 2026-06-18)
+`df85507` - feat: add expected cash movements dashboard (pushed 2026-06-18)
 
 ## Verified baseline (as of f9bff71)
 

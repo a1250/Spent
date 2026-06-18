@@ -717,6 +717,203 @@ export interface RuleEffectiveness {
   averageAppliedConfidence: number | null;
 }
 
+// ── Forecast / Recurring patterns ─────────────────────────────────────────────
+
+export type RecurringFrequency =
+  | "monthly"
+  | "bimonthly"
+  | "quarterly"
+  | "annual"
+  | "irregular";
+
+export type RecurringSourceType =
+  | "auto_detected"
+  | "manual"
+  | "installment"
+  | "rule_derived";
+
+export type ConfidenceBand = "high" | "medium" | "low";
+
+export type ForecastItemStatus =
+  | "matched"
+  | "expected"
+  | "missing"
+  | "overdue"
+  | "uncertain"
+  | "inactive";
+
+export interface RecurringPattern {
+  id: number;
+  workspaceId: number;
+  displayLabel: string;
+  descriptionPattern: string;
+  counterpartyPattern: string | null;
+  direction: "income" | "expense";
+  businessUnit: string | null;
+  categoryId: number | null;
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  expectedAmount: number | null;
+  amountMin: number | null;
+  amountMax: number | null;
+  amountVariance: number | null;
+  frequency: RecurringFrequency;
+  expectedIntervalMonths: number | null;
+  expectedDayOfMonth: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  lastSeenDate: string | null;
+  sourceType: RecurringSourceType;
+  confidenceScore: number | null;
+  isActive: boolean;
+  isUserConfirmed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetectionWindow {
+  startMonth: string;
+  endMonth: string;
+  monthsInWindow: number;
+}
+
+export interface DetectionCandidate {
+  descriptionPattern: string;
+  direction: "income" | "expense";
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  monthsSeen: number;
+  monthsInWindow: number;
+  totalOccurrences: number;
+  avgAmount: number;
+  minAmount: number;
+  maxAmount: number;
+  variancePct: number;
+  expectedDayOfMonth: number;
+  lastSeen: string;
+  frequency: RecurringFrequency;
+  medianGapDays: number;
+  confidenceScore: number;
+  confidenceBand: ConfidenceBand;
+  isIncomeAdvisoryOnly: boolean;
+}
+
+export interface RejectedCandidate {
+  descriptionPattern: string;
+  direction: "income" | "expense";
+  monthsSeen: number;
+  totalOccurrences: number;
+  variancePct: number;
+  rejectionReason: string;
+}
+
+export interface InstallmentProjection {
+  transactionId: number;
+  description: string;
+  chargedAmount: number;
+  installmentNumber: number;
+  installmentTotal: number;
+  remainingCount: number;
+  projectedMonths: string[];
+}
+
+export interface InstallmentAdvisory {
+  installmentRowCount: number;
+  rowsWithMissingSequence: number;
+  dataQualitySufficient: boolean;
+  projections: InstallmentProjection[];
+}
+
+export interface DetectionResult {
+  window: DetectionWindow;
+  groupingKey: string;
+  candidates: {
+    high: DetectionCandidate[];
+    medium: DetectionCandidate[];
+    low: DetectionCandidate[];
+    rejected: RejectedCandidate[];
+  };
+  installmentAdvisory: InstallmentAdvisory;
+}
+
+export interface ForecastItem {
+  patternId: number;
+  displayLabel: string;
+  direction: "income" | "expense";
+  financialNature: FinancialNature;
+  pnlImpact: PnlImpact;
+  expectedAmount: number;
+  amountMin: number | null;
+  amountMax: number | null;
+  actualAmount: number | null;
+  status: ForecastItemStatus;
+  matchedTransactionIds: number[];
+  expectedDayOfMonth: number | null;
+}
+
+export interface ForecastMonth {
+  month: string;
+  confirmedPnlIncome: ForecastItem[];
+  confirmedPnlExpenses: ForecastItem[];
+  confirmedNonPnlCashIn: ForecastItem[];
+  confirmedNonPnlCashOut: ForecastItem[];
+  uncertain: ForecastItem[];
+  installmentAdvisory: InstallmentAdvisory;
+  totalExpectedPnlIncome: number;
+  totalExpectedPnlExpenses: number;
+  totalActualPnlIncome: number;
+  totalActualPnlExpenses: number;
+  unconfirmedSuggestionCount: number;
+}
+
+export interface CreateForecastPatternInput {
+  displayLabel: string;
+  descriptionPattern: string;
+  counterpartyPattern?: string | null;
+  direction: "income" | "expense";
+  businessUnit?: string | null;
+  categoryId?: number | null;
+  financialNature: FinancialNature;
+  cashFlowType: CashFlowType;
+  pnlImpact: PnlImpact;
+  expectedAmount?: number | null;
+  amountMin?: number | null;
+  amountMax?: number | null;
+  amountVariance?: number | null;
+  frequency: RecurringFrequency;
+  expectedIntervalMonths?: number | null;
+  expectedDayOfMonth?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  lastSeenDate?: string | null;
+  sourceType?: RecurringSourceType;
+  confidenceScore?: number | null;
+  isUserConfirmed: boolean;
+}
+
+export interface UpdateForecastPatternInput {
+  displayLabel?: string;
+  counterpartyPattern?: string | null;
+  businessUnit?: string | null;
+  categoryId?: number | null;
+  financialNature?: FinancialNature;
+  cashFlowType?: CashFlowType;
+  pnlImpact?: PnlImpact;
+  expectedAmount?: number | null;
+  amountMin?: number | null;
+  amountMax?: number | null;
+  amountVariance?: number | null;
+  frequency?: RecurringFrequency;
+  expectedIntervalMonths?: number | null;
+  expectedDayOfMonth?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  isActive?: boolean;
+  isUserConfirmed?: boolean;
+}
+
 export interface RuleEffectivenessReport {
   summary: {
     totalUserApprovedRules: number;

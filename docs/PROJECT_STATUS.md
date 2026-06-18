@@ -8,11 +8,7 @@ Last updated: 2026-06-18
 
 ## Latest pushed commit
 
-`5d2ac62` - feat: polish transaction management and add void support (pushed)
-
-## Latest local commit (not pushed)
-
-Package 2+3 - Report Drilldown + Import History (not yet committed)
+`25bbea4` - feat: add report drilldown and import history (pushed 2026-06-18)
 
 ## Verified baseline (as of f9bff71)
 
@@ -140,12 +136,32 @@ QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS. Baseline 1095 tx int
 
 QA: tsc PASS, build PASS, learning-policy 36/36. Baseline unchanged.
 
+### Package 4 — Forecast Backend (local, not yet committed)
+
+- Migration 038: `recurring_patterns` table (direction, amount_min/max, bimonthly frequency)
+- `src/server/forecast/detect-recurring.ts`: read-only detection service
+  - Grouping key: (clean_description, direction) — income/expense with same description stay separate
+  - Detection window computed dynamically; denominator consistent across all candidate scores
+  - Frequency model: monthly/bimonthly/quarterly/annual/irregular from median gap analysis
+  - Excludes: credit_card_payment, internal_transfer, owner_deposit, owner_draw, loan_repayment, refund, needs_review, voided
+  - Income candidates flagged isIncomeAdvisoryOnly=true — require explicit confirmation
+  - No auto-detected candidates persisted to DB
+- `src/server/db/queries/forecast.ts`: pattern CRUD + installment advisory + forecast month computation
+- API routes: GET /api/forecast, POST /api/forecast/detect, GET+POST /api/forecast/patterns, GET+PATCH /api/forecast/patterns/[id]
+- Forecast month response separates P&L income/expense, non-P&L cash in/out, uncertain, installment advisory
+- Only is_user_confirmed=1 patterns enter primary forecast totals
+- Installment advisory: 2 live rows with NULL sequence fields → dataQualitySufficient=false
+- `scripts/test-forecast-detection.ts`: 34 tests, all passing
+
+QA: tsc PASS, build PASS (all 4 forecast routes visible), dedup 8/8, learning-policy 36/36.
+All 10 DB baselines intact. Backup: data/backups/pre-038-20260618-102456.db
+
 ## Known pending items
 
 - 381 transactions remain needs_review (business_unit = NULL on all 381)
 - 40 transactions tagged `other` via user-approved rules - deliberate, not gaps
 - 18 transactions tagged `unknown` via user-approved rules - deliberate, not gaps
 - 5 business units with zero usage: umino, paseo, topsoccer, cctv360, shared
-- No forecast feature yet
+- Forecast UI not yet built (Checkpoint 3 pending)
 - No MAX credit card rich adapter
 - File B must not be imported (confirmed 100% duplicates)

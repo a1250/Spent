@@ -1094,3 +1094,48 @@ export function getMonthlyBreakdown(month?: string) {
   const query = month ? `?month=${encodeURIComponent(month)}` : "";
   return fetchJSON<MonthlyBreakdown>(`/api/reports/monthly${query}`);
 }
+
+// ── Forecast ──────────────────────────────────────────────────────────────────
+
+export function getForecastMonth(month?: string) {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJSON<import("./types").ForecastMonth>(`/api/forecast${query}`);
+}
+
+export function runForecastDetection() {
+  return fetchJSON<import("./types").DetectionResult>("/api/forecast/detect", {
+    method: "POST",
+  });
+}
+
+export function listForecastPatterns(opts?: {
+  confirmedOnly?: boolean;
+  activeOnly?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (opts?.confirmedOnly) params.set("confirmedOnly", "true");
+  if (opts?.activeOnly === false) params.set("activeOnly", "false");
+  const q = params.size > 0 ? `?${params}` : "";
+  return fetchJSON<{ patterns: import("./types").RecurringPattern[] }>(
+    `/api/forecast/patterns${q}`
+  );
+}
+
+export function createForecastPattern(
+  data: import("./types").CreateForecastPatternInput
+) {
+  return fetchJSON<{ pattern: import("./types").RecurringPattern }>(
+    "/api/forecast/patterns",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }
+  );
+}
+
+export function updateForecastPattern(
+  id: number,
+  data: import("./types").UpdateForecastPatternInput
+) {
+  return fetchJSON<{ pattern: import("./types").RecurringPattern }>(
+    `/api/forecast/patterns/${id}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }
+  );
+}

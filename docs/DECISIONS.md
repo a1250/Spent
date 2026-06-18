@@ -104,10 +104,33 @@ credential in the list. Direct batch-to-credential mapping was not implemented b
 the `adapter_key` values do not reliably map to provider slugs. This is documented and
 acceptable for the current use case.
 
+## Forecast
+
+### Forecast is advisory — never alters actual data
+Forecast data lives in `recurring_patterns` and forecast API responses. It never writes to `transactions`, `classification_rules`, or any financial aggregate table. Actual P&L and cash-flow totals are unchanged by any forecast operation.
+
+### Only user-confirmed patterns enter primary forecast totals
+`recurring_patterns.is_user_confirmed = 1` is the gate. Auto-detected candidates returned by `POST /api/forecast/detect` are never persisted automatically. They are returned as a response payload for user review. The user must explicitly create a pattern via `POST /api/forecast/patterns` with `isUserConfirmed: true`.
+
+### Income detection is advisory-only
+Any recurring income candidate from detection is flagged `isIncomeAdvisoryOnly: true`. Income transfers may represent salary, owner deposit, reimbursement, or operating income — the system cannot infer which. The user must explicitly set `financialNature` and `pnlImpact` when confirming an income pattern.
+
+### Grouping key: clean_description + direction
+Recurring detection groups by `(clean_description, direction)` where direction = income|expense. This prevents an expense and income with the same description from merging into one candidate.
+
+### Frequency model includes bimonthly
+Frequency is inferred from median gap between occurrences: monthly (20-50 days), bimonthly (50-75 days), quarterly (75-110 days), annual (330-400 days), irregular (otherwise). Municipal taxes (arnona) in Israel often recur every two months; `bimonthly` ensures these are not silently classified as `irregular`.
+
+### Installment projection requires populated sequence fields
+The live DB has 2 installment transactions with NULL `installment_number` and `installment_total`. Until import adapters populate these fields, installment projection returns `dataQualitySufficient: false` and no projections are generated. The API shape is ready for when data quality improves.
+
+### Detection exclusions
+The following financial_nature values are excluded from recurring-expense P&L detection: `credit_card_payment`, `internal_transfer`, `owner_deposit`, `owner_draw`, `loan_received`, `loan_repayment`, `refund`. Additionally: `needs_review`, voided (`is_excluded=1`), and `kind=transfer` rows are excluded.
+
 ## Future functionality
 
-### Forecast is required future functionality
-A spending forecast / budget pace feature is on the product roadmap but has not been built yet.
+### Forecast UI is pending Checkpoint 3 approval
+The forecast backend (migration 038, detection service, API) is complete. The forecast dashboard (/reports/forecast), pattern management (/settings/recurring), and forecast-vs-actual overlay are pending explicit approval to build.
 
 ### Multi-user / auth is out of scope for Phase 1
 The app is single-workspace for Phase 1. Multi-user support is deferred.

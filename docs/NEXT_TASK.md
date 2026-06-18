@@ -116,6 +116,21 @@ import history page with per-credential "last imported" dates.
 
 ## Package 4 - Forecast / Expected Cash Movements
 
-Status: AWAITING APPROVAL
+Status: IN PROGRESS — Checkpoint 2 complete (backend), awaiting approval for Checkpoint 3 (UI)
 
-See plan at ~/.claude/plans/harmonic-percolating-sutton.md for full scope.
+### Checkpoint 2 (complete, not yet committed)
+
+- Migration 038: `recurring_patterns` table
+- Detection service: read-only, returns suggestions, never persists
+- Pattern CRUD: GET/POST /api/forecast/patterns, PATCH /api/forecast/patterns/[id]
+- Forecast month: GET /api/forecast?month=YYYY-MM (separated P&L/non-P&L/uncertain/installment)
+- Detection endpoint: POST /api/forecast/detect (returns high/medium/low/rejected bands)
+- 34 detection tests passing
+- Backup: data/backups/pre-038-20260618-102456.db
+
+### Checkpoint 3 (pending approval)
+
+- /reports/forecast page
+- Pattern management at /settings/recurring
+- Forecast vs actual overlay in P&L report
+- Final QA + commit

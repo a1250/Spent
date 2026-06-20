@@ -627,6 +627,41 @@ export function renameCategory(categoryId: number, name: string) {
   });
 }
 
+export interface BackupRecord {
+  filename: string;
+  createdAt: string;
+  sizeBytes: number;
+  sizeMb: string;
+  integrity: "ok" | "failed" | "unknown";
+  foreignKeys: "ok" | "failed" | "unknown";
+  transactionCount: number | null;
+  isSystemBackup: boolean;
+}
+
+export function listBackupsApi() {
+  return fetchJSON<{ backups: BackupRecord[] }>("/api/data/backups");
+}
+
+export function createBackup() {
+  return fetchJSON<{ backup: BackupRecord }>("/api/data/backups", {
+    method: "POST",
+  });
+}
+
+export function restoreFromBackup(filename: string, confirmation: string) {
+  return fetchJSON<{
+    success: boolean;
+    preRestoreBackup: string;
+    restoredFilename: string;
+    transactionCount: number | null;
+    requiresRestart: true;
+  }>("/api/data/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename, confirmation }),
+  });
+}
+
 export function setCategoryArchived(categoryId: number, archived: boolean) {
   return fetchJSON<{ success: boolean }>(`/api/categories/${categoryId}`, {
     method: "PATCH",

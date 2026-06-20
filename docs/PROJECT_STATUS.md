@@ -136,7 +136,7 @@ QA: dedup 8/8, learning-policy 36/36, tsc PASS, build PASS. Baseline 1095 tx int
 
 QA: tsc PASS, build PASS, learning-policy 36/36. Baseline unchanged.
 
-### Package 4 — Forecast (local, not yet pushed)
+### Package 4 — Forecast (pushed as df85507)
 
 Checkpoint 2 (commit 697b790):
 - Migration 038: `recurring_patterns` table (direction, amount_min/max, bimonthly frequency)
@@ -144,7 +144,7 @@ Checkpoint 2 (commit 697b790):
 - Pattern CRUD API + forecast month API (P&L/non-P&L/uncertain/installment advisory)
 - 34 detection tests passing
 
-Checkpoint 3 (local):
+Checkpoint 3 (commit df85507):
 - `/reports/forecast` page: month nav, summary cards, P&L/non-P&L/uncertain sections,
   installment advisory, detection sheet with confidence bands, confirm/create dialogs
 - `/settings/recurring` page: pattern list, filter by confirmed/pending, edit sheet,
@@ -156,12 +156,32 @@ Checkpoint 3 (local):
 
 QA: tsc PASS, build PASS. 0 live recurring_patterns. All baselines intact.
 
+### Package 5 — Product Readiness (local, pending commit)
+
+- `src/server/db/backup.ts`: WAL-safe backup/restore module using better-sqlite3 `.backup()`
+  API. `createUserBackup()` writes `backup-YYYY-MM-DD-HHmmss.db`, runs integrity_check
+  and foreign_key_check, returns metadata. `restoreFromBackup()` verifies source, creates
+  automatic pre-restore backup, then restores.
+- `GET/POST /api/data/backups`: list all backups, create a new user backup
+- `POST /api/data/restore`: restore with typed confirmation ("restore database"),
+  path-traversal guard, auto pre-restore backup, returns requiresRestart: true
+- `BackupRecord` and `listBackupsApi/createBackup/restoreFromBackup` added to `src/lib/api.ts`
+- `/settings/data` page: new `BackupCard` component above DangerZone — lists manual and
+  system backups, create button, restore confirmation dialog with typed confirmation
+- `src/app/error.tsx`: global error boundary with AlertTriangle icon and "Try again"
+- `src/app/not-found.tsx`: 404 page with "Go to dashboard" link
+- `scripts/test-backup-restore.sh`: sandbox-only backup/restore integration test (8 checks)
+- Fresh workspace: categories seeded, APIs return 200, 0 transactions correct, no hardcoded IDs
+
+QA: tsc PASS, build PASS, dedup 8/8, learning-policy 36/36, forecast 34/34.
+All baselines intact (1095 tx, 704 manually_approved, 381 needs_review, 10 auto_classified).
+0 live transactions mutated. No classification rules created.
+
 ## Known pending items
 
 - 381 transactions remain needs_review (business_unit = NULL on all 381)
 - 40 transactions tagged `other` via user-approved rules - deliberate, not gaps
 - 18 transactions tagged `unknown` via user-approved rules - deliberate, not gaps
 - 5 business units with zero usage: umino, paseo, topsoccer, cctv360, shared
-- Forecast UI not yet built (Checkpoint 3 pending)
 - No MAX credit card rich adapter
 - File B must not be imported (confirmed 100% duplicates)

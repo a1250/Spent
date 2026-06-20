@@ -129,10 +129,22 @@ The following financial_nature values are excluded from recurring-expense P&L de
 
 ## Future functionality
 
-### Forecast UI is complete (Checkpoint 3 done)
+### Forecast UI is complete (Checkpoint 3 done, pushed as df85507)
 The forecast backend (migration 038, detection service, API) and UI are complete. Includes
 /reports/forecast dashboard with month navigation, detection sheet, pattern confirmation,
-and /settings/recurring for pattern management. Local only, not yet pushed.
+and /settings/recurring for pattern management.
+
+### Backup restore requires server restart
+`POST /api/data/restore` writes the backup file over the live DB using better-sqlite3's
+`backup()` API (source → destination). The in-process singleton DB connection is not
+closed. The restored DB takes effect only after the Next.js process restarts. The API
+returns `requiresRestart: true` and the UI shows a restart banner. This is acceptable
+for a self-hosted dev-mode app.
+
+### User backup filenames use `backup-YYYY-MM-DD-HHmmss.db` prefix
+Auto-migration backups use `pre-NNN-` prefix. Pre-restore backups use `pre-restore-`
+prefix. User manual backups use `backup-`. The UI uses `isSystemBackup: true` to
+separate `backup-` entries from system entries in the table display.
 
 ### Multi-user / auth is out of scope for Phase 1
 The app is single-workspace for Phase 1. Multi-user support is deferred.

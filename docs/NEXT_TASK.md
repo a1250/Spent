@@ -154,22 +154,45 @@ Status: COMPLETE (local, not yet pushed) — awaiting push approval
 
 ## Package 5 - Product Readiness
 
-Status: AWAITING APPROVAL
+Status: COMPLETE (local, pending push approval)
 
-### Objective
+### Deliverables
 
-Fill in gaps that block daily use: backup/restore UI, complete empty states, audit log
-viewer, error handling, and workspace readiness for new users.
+1. Backup/restore infrastructure
+   - `src/server/db/backup.ts`: WAL-safe backup module, `createUserBackup()`, `listBackups()`,
+     `restoreFromBackup()` with integrity check, FK check, path-traversal guard, auto pre-restore
+   - `GET /api/data/backups` (list) + `POST /api/data/backups` (create)
+   - `POST /api/data/restore` with confirmation payload ("restore database"), returns
+     requiresRestart: true
+   - BackupRecord type + API client functions in `src/lib/api.ts`
 
-### Scope (recommended)
+2. Backup management UI at /settings/data
+   - New BackupCard above DangerZone: lists manual and system backups, Create backup button,
+     restore confirmation dialog with typed confirmation, post-restore restart warning
 
-1. Backup/restore UI at /settings/data
-   - POST /api/data/backup, GET /api/data/backups, POST /api/data/restore
-2. Empty states on all major pages
-3. Graceful error boundaries on report components
-4. Fresh workspace flow verification (no hardcoded IDs)
+3. Error framework pages
+   - `src/app/error.tsx`: global error boundary
+   - `src/app/not-found.tsx`: 404 page (uses render prop for Link — no asChild)
+
+4. Empty state audit
+   - Transactions, reports, dashboard, settings: all have existing empty states
+   - Import page: has clear upload CTA as primary state
+   - Fresh workspace: seeded categories load, APIs 200, 0 transactions correct
+
+5. Backup/restore test script
+   - `scripts/test-backup-restore.sh`: 8 checks (create, list, bad confirmation, path
+     traversal, actual restore, pre-restore backup creation)
+
+### QA
+
+- tsc PASS, build PASS
+- dedup 8/8, learning-policy 36/36, forecast detection 34/34
+- Baselines intact: 1095 tx, 704 manually_approved, 381 needs_review, 10 auto_classified
+- 0 live transactions mutated, 0 classification rules created
+- Fresh workspace: all APIs return correct responses, no hardcoded IDs
 
 ### Prohibited
 
 - Do not auto-classify any needs_review transactions
 - Do not push without explicit approval
+- Do not invoke live restore during automated execution

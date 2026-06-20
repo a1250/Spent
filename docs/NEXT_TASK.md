@@ -215,3 +215,30 @@ Push requires explicit user approval.
 - Do not auto-classify any needs_review transactions
 - Do not push without explicit approval
 - Do not invoke live restore during automated execution
+
+---
+
+## Future optional work — AWAITING PRIORITIZATION
+
+No future package is automatically approved. Each item below requires explicit user approval
+before any implementation begins.
+
+- **BU seed cleanup**: Remove workspace-specific slugs (umino, paseo, topsoccer, cctv360,
+  gazebo, mytiv, advance, playground) from migration 030. Fresh workspaces should start
+  with only the 4 generic defaults (personal, shared, other, unknown). Requires data migration
+  to handle existing workspaces that have transactions tagged to these slugs.
+
+- **Category 86 extraction**: Telecom & Internet (cat 86) was created via a data mutation,
+  not a seed migration. Move it into the seed if it should be available to all workspaces.
+
+- **Multi-user / auth**: Out of scope for Phase 1. Deferred indefinitely.
+
+- **Hebrew UI**: English only for Phase 1. Deferred.
+
+- **Export (CSV/OFX)**: Not planned.
+
+- **Mobile app**: Phase 2. Not planned.
+
+- **Budgets and alerts**: Out of scope for Phase 1.
+
+- **MAX credit card rich adapter**: Out of scope. File B must not be imported (100% dupes).

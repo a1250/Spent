@@ -156,6 +156,25 @@ Status: COMPLETE (local, not yet pushed) — awaiting push approval
 
 Status: COMPLETE (local, pending push approval)
 
+---
+
+## Local-first product milestone: COMPLETE
+
+All planned packages are complete. The workspace supports continuous import, classification,
+reporting, forecast, and data management without manual DB access.
+
+Completed packages:
+- Package 1 (Phase 2Z polish + void): commit 5d2ac62
+- Package 2+3 (report drilldown + import history): commit 25bbea4
+- Package 4 (forecast / recurring patterns): commits 697b790 + df85507
+- Package 5 (backup management + product readiness): commit fd8df04
+
+Branch: feature/legacy-excel-import-phase-1
+Ahead of remote by 4 commits (fd8df04, 5ab4df6 is the remote HEAD).
+Push requires explicit user approval.
+
+---
+
 ### Deliverables
 
 1. Backup/restore infrastructure

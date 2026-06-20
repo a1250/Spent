@@ -15,7 +15,7 @@ set -euo pipefail
 SANDBOX="${1:-}"
 
 if [[ -z "$SANDBOX" ]]; then
-  echo "ERROR: sandbox path is required as \$1 or via SPENT_DATA_DIR"
+  echo "ERROR: sandbox path is required as \$1"
   echo "Usage: SANDBOX=\$(./scripts/qa-sandbox.sh) && ./scripts/test-backup-restore.sh \"\$SANDBOX\""
   exit 1
 fi
@@ -34,6 +34,8 @@ export SPENT_DATA_DIR="$SANDBOX"
 
 PORT=3778
 BASE_URL="http://127.0.0.1:$PORT"
+# CSRF middleware requires Origin header on all mutating requests
+ORIGIN_HEADER="Origin: $BASE_URL"
 
 echo ""
 echo "=== Backup/Restore Integration Test ==="
@@ -70,7 +72,9 @@ fi
 
 # --- Create a backup ---
 echo "[4/8] POST /api/data/backups (create backup)..."
-CREATE_RESP=$(curl -s -X POST "$BASE_URL/api/data/backups")
+CREATE_RESP=$(curl -s -X POST "$BASE_URL/api/data/backups" \
+  -H "$ORIGIN_HEADER" \
+  -H "Content-Type: application/json")
 BACKUP_FILE=$(echo "$CREATE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['backup']['filename'])" 2>/dev/null || echo "")
 BACKUP_TX=$(echo "$CREATE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['backup']['transactionCount'])" 2>/dev/null || echo "")
 BACKUP_INTEGRITY=$(echo "$CREATE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['backup']['integrity'])" 2>/dev/null || echo "")
@@ -112,6 +116,7 @@ echo "  [ok] backup visible in list"
 # --- Test restore — wrong confirmation ---
 echo "[6/8] POST /api/data/restore with wrong confirmation (expect 400)..."
 BAD_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/data/restore" \
+  -H "$ORIGIN_HEADER" \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"$BACKUP_FILE\",\"confirmation\":\"wrong\"}")
 BAD_STATUS=$(echo "$BAD_RESP" | tail -1)
@@ -124,6 +129,7 @@ echo "  [ok] wrong confirmation rejected with 400"
 # --- Test restore — invalid filename ---
 echo "[7/8] POST /api/data/restore with path traversal filename (expect 400)..."
 TRAV_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/data/restore" \
+  -H "$ORIGIN_HEADER" \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"../spent.db\",\"confirmation\":\"restore database\"}")
 TRAV_STATUS=$(echo "$TRAV_RESP" | tail -1)
@@ -136,6 +142,7 @@ echo "  [ok] path traversal rejected with 400"
 # --- Test actual restore ---
 echo "[8/8] POST /api/data/restore with correct confirmation..."
 RESTORE_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/data/restore" \
+  -H "$ORIGIN_HEADER" \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"$BACKUP_FILE\",\"confirmation\":\"restore database\"}")
 RESTORE_BODY=$(echo "$RESTORE_RESP" | head -1)
@@ -175,7 +182,7 @@ echo "Backup created: $BACKUP_FILE"
 echo "Pre-restore backup: $PRE_RESTORE_FILE"
 echo ""
 echo "Sandbox backups:"
-ls "$SANDBOX/backups/" | grep "\.db$" | sort | tail -10
+ls "$SANDBOX/backups/" 2>/dev/null | grep "\.db$" | sort | tail -10
 echo ""
 echo "NOTE: server restart required for restored DB to take effect."
 echo "To clean up: rm -rf $SANDBOX"

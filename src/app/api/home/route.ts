@@ -14,6 +14,7 @@ import {
 import { getWorkspaceSetting } from "@/server/db/queries/settings";
 import { getNextRunAt } from "@/server/sync/scheduler";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
+import { getDb } from "@/server/db/index";
 import {
   daysInMonth,
   dayWithinMonth,
@@ -158,8 +159,31 @@ export async function GET(request: Request) {
   const bankHealth = safe<HomeBankHealthItem[]>("bankHealth", errors, () =>
     getBankHealth(workspaceId)
   );
+  const counts = safe<{ transactionCount: number; integrationCount: number }>(
+    "bankHealth",
+    errors,
+    () => {
+      const db = getDb();
+      const tx = db
+        .prepare(
+          "SELECT COUNT(*) as count FROM transactions WHERE workspace_id = ?"
+        )
+        .get(workspaceId) as { count: number };
+      const integrations = db
+        .prepare(
+          "SELECT COUNT(*) as count FROM bank_credentials WHERE workspace_id = ?"
+        )
+        .get(workspaceId) as { count: number };
+      return {
+        transactionCount: tx.count,
+        integrationCount: integrations.count,
+      };
+    }
+  );
 
   const payload: HomePayload = {
+    transactionCount: counts?.transactionCount ?? 0,
+    integrationCount: counts?.integrationCount ?? 0,
     thisMonth,
     cashFlow,
     categorySnapshot,

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertCircle, Building2, Download, Plus, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, Building2, Download, FileUp, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
@@ -462,15 +463,29 @@ export function TransactionsPage() {
             <p className="mt-1 text-xs text-muted-foreground/70">
               Import a bank statement or add a manual transaction to get started.
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-4 gap-1.5"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add transaction
-            </Button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add transaction
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                className="gap-1.5"
+                render={
+                  <Link href="/import">
+                    <FileUp className="h-3.5 w-3.5" />
+                    Import file
+                  </Link>
+                }
+              />
+            </div>
           </div>
         ) : (
           <TransactionsTable

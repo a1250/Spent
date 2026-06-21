@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -54,11 +55,8 @@ export function BankStep({ onComplete }: BankStepProps) {
     queryFn: listIntegrations,
   });
 
-  // Pick the right starting view once we've heard back from the query
-  useEffect(() => {
-    if (isPending || sub != null) return;
-    setSub(integrations.length > 0 ? "ready" : "pick");
-  }, [isPending, integrations.length, sub]);
+  const effectiveSub: Sub | null =
+    sub ?? (isPending ? null : integrations.length > 0 ? "ready" : "pick");
 
   const connectedIds = new Set(integrations.map((i) => i.provider));
   const selected = selectedId
@@ -117,7 +115,7 @@ export function BankStep({ onComplete }: BankStepProps) {
     }
   }
 
-  if (sub == null) return null;
+  if (effectiveSub == null) return null;
 
   const readyCountLabel =
     integrations.length === 1
@@ -126,7 +124,7 @@ export function BankStep({ onComplete }: BankStepProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[520px] flex-col gap-6">
-      {sub === "pick" && (
+      {effectiveSub === "pick" && (
           <div
             key="pick"
             className="flex w-full flex-col gap-4"
@@ -142,17 +140,29 @@ export function BankStep({ onComplete }: BankStepProps) {
             )}
             <header className="space-y-2">
               <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Step 1 of 5 · Accounts
+                Optional · Accounts
               </div>
               <h1 className="font-serif text-4xl leading-[1.08] tracking-tight">
-                Which accounts should Spent watch?
+                Choose a data source, or continue without one
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Add every bank and card you want to track. Credentials are
-                encrypted with AES-256 and stored on this machine only, never
-                leaving your computer.
+                Bank and card connections are optional. You can import files,
+                add transactions manually, or connect a service later from
+                Settings.
               </p>
             </header>
+
+            <div className="flex flex-wrap gap-2">
+              <Button nativeButton={false} render={<Link href="/">Continue to Dashboard</Link>} />
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={<Link href="/import">Upload and Import Files</Link>}
+              />
+              <Button variant="ghost" onClick={onComplete}>
+                Continue setup without connecting
+              </Button>
+            </div>
 
             <PickerCard
               providers={filteredProviders}
@@ -180,7 +190,7 @@ export function BankStep({ onComplete }: BankStepProps) {
           </div>
         )}
 
-        {sub === "form" && selected && (
+        {effectiveSub === "form" && selected && (
           <div
             key={`form-${selected.id}`}
             className="flex w-full flex-col gap-4"
@@ -218,7 +228,7 @@ export function BankStep({ onComplete }: BankStepProps) {
           </div>
         )}
 
-        {sub === "ready" && integrations.length > 0 && (
+        {effectiveSub === "ready" && integrations.length > 0 && (
           <div
             key="ready"
             className="flex w-full flex-col gap-4"
@@ -298,9 +308,8 @@ export function BankStep({ onComplete }: BankStepProps) {
               </Button>
               <Button
                 onClick={onComplete}
-                disabled={integrations.length === 0}
               >
-                Continue to AI →
+                Continue setup →
               </Button>
             </footer>
           </div>
@@ -485,10 +494,6 @@ function CredentialForm({
     "idle" | "testing-ok" | "testing-fail" | "saved"
   >("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSavedCredentialId(credentialId);
-  }, [credentialId]);
 
   useEffect(() => {
     if (!isEdit || credentialId == null) return;

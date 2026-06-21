@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -10,6 +11,8 @@ import {
   Loader2,
   CircleCheck,
   CircleAlert,
+  FileUp,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +66,7 @@ export default function BankSettingsPage() {
   const lastImportAt = integrations[0]?.lastImportAt ?? null;
 
   const availableToAdd = BANK_PROVIDERS.filter((b) => b.enabled);
+  const connectedProviderIds = new Set(integrations.map((i) => i.provider));
 
   const handleSyncAll = () => {
     integrations.forEach((i) => start(i.id));
@@ -115,6 +119,30 @@ export default function BankSettingsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              className="gap-1.5"
+              render={
+                <Link href="/">
+                  Continue to Dashboard
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="gap-1.5"
+              render={
+                <Link href="/import">
+                  <FileUp className="h-3.5 w-3.5" />
+                  Import a file instead
+                </Link>
+              }
+            />
+            <Button
               variant="outline"
               size="sm"
               onClick={handleSyncAll}
@@ -163,10 +191,28 @@ export default function BankSettingsPage() {
         </div>
 
         {integrations.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-            {t.rich("noneConnectedPrompt", {
-              addBankBold: (chunks) => <b>{chunks}</b>,
-            })}
+          <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+            <h2 className="font-serif text-xl text-foreground">
+              Connections are optional
+            </h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+              You can connect a supported bank or card, import files, add
+              transactions manually, or continue using the dashboard without a
+              data service.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/">Continue to Dashboard</Link>}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                render={<Link href="/import">Import a file instead</Link>}
+              />
+            </div>
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -249,6 +295,17 @@ export default function BankSettingsPage() {
             </ul>
           </div>
         )}
+        <ProviderStatusGrid
+          connectedProviderIds={connectedProviderIds}
+          onPick={(providerId) =>
+            setSheet({
+              open: true,
+              mode: "add",
+              providerId,
+              credentialId: null,
+            })
+          }
+        />
       </SectionShell>
 
       <BankDetailSheet
@@ -260,6 +317,67 @@ export default function BankSettingsPage() {
         onClose={() => setSheet((s) => ({ ...s, open: false }))}
       />
     </>
+  );
+}
+
+function ProviderStatusGrid({
+  connectedProviderIds,
+  onPick,
+}: {
+  connectedProviderIds: Set<string>;
+  onPick: (providerId: string) => void;
+}) {
+  const tBanks = useTranslations("banks");
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="font-serif text-xl">Available data sources</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          These are optional local data sources. Connection failures never block
+          dashboard, file import, reports, or manual transactions.
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {BANK_PROVIDERS.map((provider) => {
+          const connected = connectedProviderIds.has(provider.id);
+          const status = connected
+            ? "connected"
+            : provider.enabled
+              ? provider.supportsProgrammaticTwoFactor
+                ? "available"
+                : "manual"
+              : "coming later";
+          return (
+            <button
+              key={provider.id}
+              type="button"
+              disabled={!provider.enabled}
+              onClick={() => provider.enabled && onPick(provider.id)}
+              className="flex items-center gap-3 rounded-xl border bg-card p-3 text-start transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ProviderBadge
+                color={provider.color}
+                name={provider.name}
+                domain={provider.domain}
+                size={34}
+                radius={8}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">
+                  {translateProviderName(provider.id, provider.name, tBanks)}
+                </div>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {provider.blurb}
+                </div>
+              </div>
+              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                {status}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

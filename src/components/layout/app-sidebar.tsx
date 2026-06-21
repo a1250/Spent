@@ -8,6 +8,7 @@ import {
   Wallet,
   ArrowLeftRight,
   Upload,
+  History,
   ListChecks,
   FileChartColumn,
   ChartNoAxesCombined,
@@ -62,7 +63,19 @@ const NAV: NavDef[] = [
     href: "/import",
     labelKey: "import",
     Icon: Upload,
-    match: (p: string) => p.startsWith("/import"),
+    match: (p: string) => p === "/import",
+  },
+  {
+    href: "/import/history",
+    labelKey: "importHistory",
+    Icon: History,
+    match: (p: string) => p.startsWith("/import/history"),
+  },
+  {
+    href: "/settings/bank",
+    labelKey: "bankConnections",
+    Icon: Landmark,
+    match: (p: string) => p.startsWith("/settings/bank"),
   },
   {
     href: "/review",

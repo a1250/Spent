@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { ArrowRight, Building2, FileUp, Plus, Table2 } from "lucide-react";
 import {
   getActivity,
   getDataQualitySummary,
@@ -11,6 +13,7 @@ import {
   getNeedsReviewTransactions,
 } from "@/lib/api";
 import { PageHeader } from "@/components/layout/app-shell";
+import { Button } from "@/components/ui/button";
 import { SyncButton } from "@/components/dashboard/sync-button";
 import { CategorizeButton } from "@/components/dashboard/categorize-button";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
@@ -126,6 +129,14 @@ export function HomePage() {
       />
 
       <div className="p-4 md:p-6 lg:p-8">
+        <EntryActions
+          isFreshWorkspace={
+            data != null &&
+            data.transactionCount === 0 &&
+            data.integrationCount === 0
+          }
+          className="mb-4 md:mb-5 lg:mb-6"
+        />
         <SyncFailureBanner
           items={data?.bankHealth ?? null}
           className="mb-4 md:mb-5 lg:mb-6"
@@ -152,6 +163,102 @@ export function HomePage() {
         </div>
       </div>
     </>
+  );
+}
+
+function EntryActions({
+  isFreshWorkspace,
+  className,
+}: {
+  isFreshWorkspace: boolean;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border bg-card p-4 md:p-5 ${className ?? ""}`}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {isFreshWorkspace ? "Welcome to BudgetWise" : "Start here"}
+          </div>
+          <h2 className="mt-1 font-serif text-2xl leading-tight">
+            {isFreshWorkspace
+              ? "Choose how you want to use your workspace"
+              : "Dashboard, imports, and connections are all optional paths"}
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Connect a service, import a file, add transactions manually, or keep
+            using the dashboard without an integration.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            nativeButton={false}
+            className="gap-1.5"
+            render={
+              <Link href="/">
+                Go to Dashboard
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            }
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            className="gap-1.5"
+            render={
+              <Link href="/settings/bank">
+                <Building2 className="h-3.5 w-3.5" />
+                Connect Bank or Service
+              </Link>
+            }
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            className="gap-1.5"
+            render={
+              <Link href="/import">
+                <FileUp className="h-3.5 w-3.5" />
+                Import File
+              </Link>
+            }
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            nativeButton={false}
+            className="gap-1.5"
+            render={
+              <Link href="/transactions">
+                <Plus className="h-3.5 w-3.5" />
+                Add Manual Transaction
+              </Link>
+            }
+          />
+        </div>
+      </div>
+      {isFreshWorkspace && (
+        <div className="mt-4 grid gap-2 border-t pt-4 text-xs text-muted-foreground sm:grid-cols-3">
+          <div className="flex items-center gap-2">
+            <Table2 className="h-3.5 w-3.5" />
+            Continue without connecting
+          </div>
+          <div className="flex items-center gap-2">
+            <FileUp className="h-3.5 w-3.5" />
+            Upload statements when ready
+          </div>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-3.5 w-3.5" />
+            Add integrations later
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -1122,6 +1122,8 @@ export interface HomeSectionError {
 }
 
 export interface HomePayload {
+  transactionCount: number;
+  integrationCount: number;
   thisMonth: HomeThisMonth | null;
   cashFlow: HomeCashFlow | null;
   categorySnapshot: HomeCategorySnapshotItem[] | null;

@@ -35,6 +35,8 @@
     "budget": "Budget",
     "transactions": "Transactions",
     "import": "Import",
+    "importHistory": "Import History",
+    "bankConnections": "Bank / Services",
     "review": "Needs Review",
     "reports": "Reports",
     "pnlPreview": "P&L Preview",

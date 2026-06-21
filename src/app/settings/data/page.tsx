@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
+  Download,
 } from "lucide-react";
 import {
   createBackup,
@@ -169,7 +170,7 @@ function BackupCard() {
           <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-6 text-center">
             <Archive className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
             <p className="text-xs text-muted-foreground">
-              No backups yet. Click "Create backup" to make a safe copy of your data.
+              No backups yet. Use Create backup to make a safe copy of your data.
             </p>
           </div>
         ) : (
@@ -353,14 +354,23 @@ function BackupList({
                   {b.transactionCount ?? <span className="text-muted-foreground/40">—</span>}
                 </td>
                 <td className="px-3 py-2 text-end">
-                  <button
-                    type="button"
-                    onClick={() => onRestore(b)}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Restore
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    <a
+                      href={`/api/data/backups/${encodeURIComponent(b.filename)}/download`}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Download className="h-3 w-3" />
+                      Download
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => onRestore(b)}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Restore
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

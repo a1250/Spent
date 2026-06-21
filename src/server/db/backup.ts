@@ -68,6 +68,14 @@ function verifyBackupFile(filePath: string): {
   }
 }
 
+function resolveBackupPath(filename: string): string | null {
+  if (!safeFilename(filename)) return null;
+  const filePath = path.join(BACKUP_DIR, filename);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(BACKUP_DIR) + path.sep)) return null;
+  return resolved;
+}
+
 function makeTimestamp(): string {
   const now = new Date();
   return (
@@ -119,14 +127,15 @@ export function listBackups(): BackupRecord[] {
       } catch {
         return null;
       }
+      const { integrity, foreignKeys, transactionCount } = verifyBackupFile(filePath);
       return {
         filename,
         createdAt: stat.mtime.toISOString(),
         sizeBytes: stat.size,
         sizeMb: (stat.size / 1024 / 1024).toFixed(2),
-        integrity: "unknown",
-        foreignKeys: "unknown",
-        transactionCount: null,
+        integrity,
+        foreignKeys,
+        transactionCount,
         isSystemBackup: !filename.startsWith("backup-"),
       };
     })
@@ -135,8 +144,8 @@ export function listBackups(): BackupRecord[] {
 }
 
 export function getBackupMetadata(filename: string): BackupRecord | null {
-  if (!safeFilename(filename)) return null;
-  const filePath = path.join(BACKUP_DIR, filename);
+  const filePath = resolveBackupPath(filename);
+  if (!filePath) return null;
   if (!fs.existsSync(filePath)) return null;
 
   const stat = fs.statSync(filePath);
@@ -151,6 +160,29 @@ export function getBackupMetadata(filename: string): BackupRecord | null {
     foreignKeys,
     transactionCount,
     isSystemBackup: !filename.startsWith("backup-"),
+  };
+}
+
+export function getVerifiedBackupDownload(filename: string): {
+  record: BackupRecord;
+  filePath: string;
+  downloadFilename: string;
+} | null {
+  const filePath = resolveBackupPath(filename);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+
+  const known = listBackups().some((backup) => backup.filename === filename);
+  if (!known) return null;
+
+  const record = getBackupMetadata(filename);
+  if (!record || record.integrity !== "ok" || record.foreignKeys !== "ok") {
+    return null;
+  }
+
+  return {
+    record,
+    filePath,
+    downloadFilename: `budgetwise-${record.filename}`,
   };
 }
 
@@ -176,7 +208,10 @@ export async function restoreFromBackup(
     throw new Error("Invalid backup filename");
   }
 
-  const sourcePath = path.join(BACKUP_DIR, filename);
+  const sourcePath = resolveBackupPath(filename);
+  if (!sourcePath) {
+    throw new Error("Invalid backup filename");
+  }
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`Backup not found: ${filename}`);
   }

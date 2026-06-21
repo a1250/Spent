@@ -1,6 +1,6 @@
 # Durable Decisions
 
-Last updated: 2026-06-17
+Last updated: 2026-06-21
 
 ## Import and data model
 
@@ -104,6 +104,22 @@ credential in the list. Direct batch-to-credential mapping was not implemented b
 the `adapter_key` values do not reliably map to provider slugs. This is documented and
 acceptable for the current use case.
 
+## Exports
+
+### V1 exports are CSV downloads with UTF-8 BOM
+BudgetWise V1 exports use local CSV downloads with a UTF-8 BOM for Hebrew spreadsheet
+compatibility. Export filenames are generated from the report name and selected date range,
+sanitized server-side, and do not expose internal DB paths or secrets.
+
+Implemented V1 export surfaces:
+- Filtered transactions
+- Monthly Breakdown
+- P&L Preview
+- Cash Flow Preview
+
+XLSX was not added because CSV satisfies the V1 requirement without introducing additional
+dependency or file-generation complexity.
+
 ## Forecast
 
 ### Forecast is advisory — never alters actual data
@@ -145,6 +161,12 @@ for a self-hosted dev-mode app.
 Auto-migration backups use `pre-NNN-` prefix. Pre-restore backups use `pre-restore-`
 prefix. User manual backups use `backup-`. The UI uses `isSystemBackup: true` to
 separate `backup-` entries from system entries in the table display.
+
+### Backup downloads verify before streaming
+Backup download is local-only and served through `GET /api/data/backups/[filename]/download`.
+The route accepts only known `.db` backup filenames from the backups directory, rejects
+path traversal, verifies `PRAGMA integrity_check` and `PRAGMA foreign_key_check`, sets a
+safe `budgetwise-...db` download filename, and never exposes raw server paths.
 
 ### Multi-user / auth is out of scope for Phase 1
 The app is single-workspace for Phase 1. Multi-user support is deferred.

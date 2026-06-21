@@ -1,5 +1,34 @@
 # Next Task
 
+## Final V1 Closure Sprint
+
+Status: COMPLETE (local, pending commit/push approval)
+
+Delivered:
+- CSV exports with UTF-8 BOM for filtered transactions, Monthly Breakdown, P&L Preview,
+  and Cash Flow Preview.
+- Export buttons added to the corresponding product pages.
+- Verified local backup download from Settings > Data with known-file validation,
+  traversal rejection, safe filename, and integrity/FK verification before streaming.
+- Acceptance probes completed across transactions, imports, reports, forecast, and backups.
+
+QA:
+- `npx tsc --noEmit` PASS
+- focused eslint on touched files PASS
+- `npm run build` PASS
+- `scripts/test-backup-restore.sh "$(./scripts/qa-sandbox.sh)"` PASS 8/8
+- `npx tsx scripts/test-forecast-detection.ts` PASS 34/34
+- `npx tsx scripts/verify-cross-adapter-dedup.ts` PASS 8/8
+- Live DB baseline unchanged: 1095 transactions, 1924 import_rows, 8 import_batches,
+  55 categories, 652 active rules, 704 manually_approved, 10 auto_classified,
+  381 needs_review, 12 business_units, 0 recurring_patterns, 0 voided.
+
+Recommended next:
+- Review the closure sprint diff, then commit locally if approved.
+- Push only after explicit user approval.
+
+---
+
 ## Phase 2Z - Dynamic Transaction Management
 
 Status: COMPLETE (commit 369b6b2, not pushed)
@@ -235,7 +264,12 @@ before any implementation begins.
 
 - **Hebrew UI**: English only for Phase 1. Deferred.
 
-- **Export (CSV/OFX)**: Not planned.
+- **Repo-wide lint cleanup**: `npm run lint` still fails on pre-existing issues outside the
+  touched closure-sprint files, including React compiler `set-state-in-effect` findings,
+  forecast test `any` types, unused imports, and existing `<img>` warnings. Focused lint on
+  closure-sprint files passes.
+
+- **OFX export**: CSV exports are complete for V1. OFX remains optional future work.
 
 - **Mobile app**: Phase 2. Not planned.
 

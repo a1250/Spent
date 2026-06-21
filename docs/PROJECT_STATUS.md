@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-18
+Last updated: 2026-06-21
 
 ## Branch
 
@@ -8,7 +8,7 @@ Last updated: 2026-06-18
 
 ## Latest pushed commit
 
-`df85507` - feat: add expected cash movements dashboard (pushed 2026-06-18)
+`27331d5` - docs: add future optional work section to NEXT_TASK.md
 
 ## Verified baseline (as of f9bff71)
 
@@ -23,6 +23,8 @@ Last updated: 2026-06-18
 | auto_classified | 10 |
 | needs_review | 381 |
 | business_units | 12 |
+| recurring_patterns | 0 |
+| voided transactions | 0 |
 
 ## Completed milestones
 
@@ -177,6 +179,50 @@ QA: tsc PASS, build PASS, dedup 8/8, learning-policy 36/36, forecast 34/34.
 All baselines intact (1095 tx, 704 manually_approved, 381 needs_review, 10 auto_classified).
 0 live transactions mutated. No classification rules created.
 
+### Final V1 Closure Sprint (local, pending commit)
+
+- Added user-facing CSV exports with UTF-8 BOM:
+  - `GET /api/export/transactions` for filtered transaction lists
+  - `GET /api/export/monthly` for Monthly Breakdown
+  - `GET /api/export/pl` for P&L Preview
+  - `GET /api/export/cashflow` for Cash Flow Preview
+- Added Export CSV buttons to `/transactions`, `/reports/monthly`, `/reports/pl`,
+  and `/reports/cashflow`. Exports respect current date/filter state and use safe filenames.
+- Added verified backup download:
+  - `GET /api/data/backups/[filename]/download`
+  - only known backup filenames are accepted
+  - path traversal is rejected
+  - integrity and foreign-key checks must pass before download
+  - no raw server path is exposed
+- Backup list metadata now includes verified integrity, foreign-key status, and transaction count.
+- Monthly Breakdown removed a state-copy effect by deriving the displayed month from the report
+  response, satisfying focused lint on touched files.
+
+Acceptance/QA:
+- Preflight passed on branch `feature/legacy-excel-import-phase-1`, clean start state,
+  HEAD `27331d5`.
+- Live DB `PRAGMA integrity_check` passed and `PRAGMA foreign_key_check` returned no rows
+  before and after work.
+- Baseline unchanged: 1095 transactions, 1924 import_rows, 8 import_batches, 55 categories,
+  652 active rules, 704 manually_approved, 10 auto_classified, 381 needs_review,
+  12 business_units, 0 recurring_patterns, 0 voided.
+- Export endpoint probes passed: all four CSVs returned 200, safe `Content-Disposition`,
+  `text/csv; charset=utf-8`, and UTF-8 BOM bytes.
+- Backup download probe passed: downloaded backup opened with SQLite, integrity `ok`,
+  FK check clean, 1095 transactions; traversal attempt rejected.
+- Sandbox transaction workflow passed: search/filter/sort, manual create, single edit,
+  bulk edit, void/unvoid, and audit history; disposable records cleaned up from sandbox.
+- Import malformed-file probe returned clear 400 message.
+- Report/import/forecast API probes returned 200 valid JSON.
+- `scripts/test-backup-restore.sh "$(./scripts/qa-sandbox.sh)"` PASS 8/8.
+- `npx tsx scripts/test-forecast-detection.ts` PASS 34/34.
+- `npx tsx scripts/verify-cross-adapter-dedup.ts` PASS 8/8.
+- `npx tsc --noEmit` PASS.
+- `npm run build` PASS. Existing Next warning: `middleware` convention is deprecated in favor
+  of `proxy`.
+- Focused eslint on touched files PASS. Repo-wide `npm run lint` still fails on pre-existing
+  lint debt in unrelated files/scripts.
+
 ## Known pending items
 
 - 381 transactions remain needs_review (business_unit = NULL on all 381)
@@ -185,3 +231,4 @@ All baselines intact (1095 tx, 704 manually_approved, 381 needs_review, 10 auto_
 - 5 business units with zero usage: umino, paseo, topsoccer, cctv360, shared
 - No MAX credit card rich adapter
 - File B must not be imported (confirmed 100% duplicates)
+- Repo-wide lint backlog remains outside this sprint; touched files pass focused eslint.

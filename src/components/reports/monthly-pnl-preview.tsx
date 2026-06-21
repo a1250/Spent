@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ChevronDown,
+  Download,
   ExternalLink,
   FileWarning,
   Landmark,
@@ -120,6 +121,12 @@ export function MonthlyPnLPreviewPage() {
       return next;
     });
   };
+  const exportParams = new URLSearchParams();
+  if (fromMonth) exportParams.set("fromMonth", fromMonth);
+  if (toMonth) exportParams.set("toMonth", toMonth);
+  if (businessUnit !== "all") exportParams.set("businessUnit", businessUnit);
+  exportParams.set("mode", mode);
+  const exportHref = `/api/export/pl?${exportParams.toString()}`;
 
   return (
     <>
@@ -128,6 +135,18 @@ export function MonthlyPnLPreviewPage() {
         meta="Classified transactions only"
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="gap-1.5"
+              render={
+                <a href={exportHref}>
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </a>
+              }
+            />
             <Button
               variant="ghost"
               size="sm"

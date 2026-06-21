@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -77,14 +78,9 @@ export function MonthlyBreakdownPage() {
 
   const report = query.data;
 
-  useEffect(() => {
-    if (report?.month && !selectedMonth) {
-      setSelectedMonth(report.month);
-    }
-  }, [report?.month, selectedMonth]);
-
+  const displayMonth = selectedMonth || report?.month || "";
   const currentIndex = report
-    ? report.availableMonths.indexOf(selectedMonth)
+    ? report.availableMonths.indexOf(displayMonth)
     : -1;
   const prevMonth =
     currentIndex >= 0 && currentIndex < report!.availableMonths.length - 1
@@ -92,6 +88,11 @@ export function MonthlyBreakdownPage() {
       : null;
   const nextMonth =
     currentIndex > 0 ? report!.availableMonths[currentIndex - 1] : null;
+  const exportHref = `/api/export/monthly?${
+    new URLSearchParams(
+      displayMonth ? { month: displayMonth } : undefined
+    ).toString()
+  }`;
 
   return (
     <>
@@ -100,6 +101,19 @@ export function MonthlyBreakdownPage() {
         meta="Classified transactions only"
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="gap-1.5"
+              render={
+                <a href={exportHref}>
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </a>
+              }
+            />
+
             <Button
               variant="ghost"
               size="icon"
@@ -111,7 +125,7 @@ export function MonthlyBreakdownPage() {
             </Button>
 
             <Select
-              value={selectedMonth}
+              value={displayMonth}
               onValueChange={(v) => {
                 if (v) setSelectedMonth(v);
               }}
@@ -153,7 +167,7 @@ export function MonthlyBreakdownPage() {
 
       <main className="space-y-6 p-4 md:p-6 lg:p-8">
         {query.isLoading && (
-          <EmptyState>Loading {formatMonth(selectedMonth) || "latest month"}...</EmptyState>
+          <EmptyState>Loading {formatMonth(displayMonth) || "latest month"}...</EmptyState>
         )}
         {query.isError && (
           <EmptyState error>Monthly breakdown could not be loaded.</EmptyState>
@@ -165,24 +179,24 @@ export function MonthlyBreakdownPage() {
               report={report}
               onNeedsReviewClick={() =>
                 router.push(
-                  `/transactions?month=${selectedMonth}&classificationStatus=needs_review`
+                  `/transactions?month=${displayMonth}&classificationStatus=needs_review`
                 )
               }
             />
             {report.coverage.needsReviewTransactions > 0 && (
-              <CoverageWarning report={report} month={selectedMonth} />
+              <CoverageWarning report={report} month={displayMonth} />
             )}
             <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
               <div className="space-y-6">
-                <ExpenseCategorySection rows={report.categoryExpenseBreakdown} month={selectedMonth} />
-                <IncomeBreakdownSection rows={report.incomeBreakdown} month={selectedMonth} />
-                <NonPnlMovementsSection rows={report.nonPnlMovements} month={selectedMonth} />
+                <ExpenseCategorySection rows={report.categoryExpenseBreakdown} month={displayMonth} />
+                <IncomeBreakdownSection rows={report.incomeBreakdown} month={displayMonth} />
+                <NonPnlMovementsSection rows={report.nonPnlMovements} month={displayMonth} />
               </div>
               <div className="space-y-6">
-                <BusinessUnitSection rows={report.businessUnitBreakdown} month={selectedMonth} />
+                <BusinessUnitSection rows={report.businessUnitBreakdown} month={displayMonth} />
                 <NeedsReviewSection
                   rows={report.needsReviewTop10}
-                  month={selectedMonth}
+                  month={displayMonth}
                 />
               </div>
             </div>

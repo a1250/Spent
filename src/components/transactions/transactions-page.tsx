@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertCircle, Building2, Plus, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, Building2, Download, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
@@ -240,6 +240,20 @@ export function TransactionsPage() {
   const hasActiveFilters =
     buFilter.length > 0 || statusFilter.length > 0 || natureFilter.length > 0;
 
+  const exportParams = new URLSearchParams();
+  exportParams.set("from", from);
+  exportParams.set("to", to);
+  if (search) exportParams.set("search", search);
+  if (kind !== "all") exportParams.set("kind", kind);
+  for (const id of expandedCategoryIds ?? []) exportParams.append("categoryIds", String(id));
+  for (const id of accountFilter) exportParams.append("credentialIds", String(id));
+  for (const bu of buFilter) exportParams.append("businessUnit", bu);
+  for (const s of statusFilter) exportParams.append("classificationStatus", s);
+  for (const n of natureFilter) exportParams.append("financialNature", n);
+  exportParams.set("sort", sortField);
+  exportParams.set("order", sortOrder);
+  const exportHref = `/api/export/transactions?${exportParams.toString()}`;
+
   function toggleFilter<T>(arr: T[], val: T): T[] {
     return arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
   }
@@ -409,13 +423,25 @@ export function TransactionsPage() {
           )}
 
           {/* Bulk select toggle */}
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            className="ms-auto gap-1.5"
+            render={
+              <a href={exportHref}>
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </a>
+            }
+          />
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
             className={
               selectedIds.size > 0
-                ? "ms-auto rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-foreground transition-colors"
-                : "ms-auto rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/50 hover:text-foreground"
+                ? "rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-foreground transition-colors"
+                : "rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/50 hover:text-foreground"
             }
           >
             {selectedIds.size > 0 ? `${selectedIds.size} selected — click to clear` : "Select rows"}

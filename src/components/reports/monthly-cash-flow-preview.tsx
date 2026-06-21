@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   ChevronDown,
   CircleDollarSign,
+  Download,
   RefreshCcw,
   Repeat2,
   SlidersHorizontal,
@@ -120,6 +121,12 @@ export function MonthlyCashFlowPreviewPage() {
       return next;
     });
   };
+  const exportParams = new URLSearchParams();
+  if (fromMonth) exportParams.set("fromMonth", fromMonth);
+  if (toMonth) exportParams.set("toMonth", toMonth);
+  if (businessUnit !== "all") exportParams.set("businessUnit", businessUnit);
+  exportParams.set("mode", mode);
+  const exportHref = `/api/export/cashflow?${exportParams.toString()}`;
 
   return (
     <>
@@ -128,6 +135,18 @@ export function MonthlyCashFlowPreviewPage() {
         meta="Classified cash movements only"
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              className="gap-1.5"
+              render={
+                <a href={exportHref}>
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </a>
+              }
+            />
             <Button
               variant="ghost"
               size="sm"

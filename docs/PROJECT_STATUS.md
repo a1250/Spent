@@ -28,6 +28,31 @@ Last updated: 2026-06-21
 
 ## Completed milestones
 
+### P1 V1 Acceptance Fix - Optional integration onboarding (local, pending commit)
+
+- Removed forced `/setup` redirects from the dashboard, transactions, budget, and settings
+  entry points. Existing and fresh workspaces can open the product without connecting a bank
+  or external data service.
+- Added equal first-screen entry paths on the dashboard: Continue to Dashboard, Connect Bank
+  or Service, Upload and Import Files, and Add Manual Transaction.
+- Added direct import access from the empty transactions state and main navigation.
+- Added main navigation entries for Import History and Bank / Services.
+- Reworked Settings > Bank as an optional data-source page with connected / available /
+  manual / coming-later status, plus Continue to Dashboard and Import a file instead actions.
+- Made setup bank selection explicitly skippable and linked to dashboard/import paths.
+- Added a fresh-workspace navigation smoke script that verifies no setup redirect loop,
+  dashboard/import/transactions/settings access, optional integration failure behavior, and
+  connected-integration/no-transaction behavior.
+
+Acceptance/QA:
+- `scripts/test-v1-entry-navigation.sh "$(./scripts/qa-sandbox.sh)"` PASS.
+- Fresh sandbox with no transactions and no integrations reached dashboard, import,
+  transactions, and optional bank/service setup without being forced through an integration.
+- Unsupported provider test failure did not block dashboard or file import access.
+- Existing-workspace regression with a sandbox credential and no transactions remained
+  navigable.
+- No live DB mutation was performed; live baseline remained unchanged.
+
 ### Phase 2U - Import pipeline and adapters
 - Legacy Excel import adapter (bank checking format)
 - Credit card import adapters: Isracard, CAL

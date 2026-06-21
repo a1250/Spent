@@ -1,5 +1,37 @@
 # Next Task
 
+## P1 V1 Acceptance Fix - Optional integration onboarding
+
+Status: COMPLETE (local, pending commit/push approval)
+
+Delivered:
+- Removed forced setup redirects from primary app routes so fresh and existing workspaces can
+  open the dashboard without connecting a bank or service.
+- Added equal entry paths for Continue to Dashboard, Connect Bank or Service, Upload and Import
+  Files, and manual transaction management.
+- Added import access from the dashboard, empty transactions state, Settings > Bank, and main
+  navigation.
+- Added Import History and Bank / Services to the main nav.
+- Made Settings > Bank an optional connection center with provider availability/status messaging,
+  dashboard continuation, and file-import fallback.
+- Made setup bank selection explicitly skippable.
+- Added `scripts/test-v1-entry-navigation.sh` for fresh-workspace, redirect, import, optional
+  connection, and connected/no-transaction navigation coverage.
+
+QA:
+- `scripts/test-v1-entry-navigation.sh "$(./scripts/qa-sandbox.sh)"` PASS.
+- `npx tsc --noEmit` PASS.
+- focused eslint on touched source files PASS, with only existing sidebar `<img>` warnings.
+- `npm run build` PASS.
+- Live DB baseline unchanged.
+
+Recommended next:
+- Commit the optional-onboarding fix, acceptance script, and documentation locally.
+- Push only after explicit user approval.
+- No Phase 2 package is approved automatically.
+
+---
+
 ## Final V1 Closure Sprint
 
 Status: COMPLETE (local, pending commit/push approval)

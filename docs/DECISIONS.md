@@ -4,6 +4,12 @@ Last updated: 2026-06-21
 
 ## Import and data model
 
+### External integrations are optional data sources
+External integrations are optional data sources. The BudgetWise entry experience must always
+allow access to the dashboard, file import, and manual transaction workflows without a bank or
+external-service connection. Connection failures, unavailable providers, and skipped onboarding
+must never block core local workflows.
+
 ### Card purchases vs bank settlements
 Card transactions appear twice in Israeli bank data: once as a card purchase (positive debit from card account) and once as a bank settlement (monthly lump-sum debit from checking account). These are NOT the same transaction and must NOT be merged or deduplicated across accounts. The card purchase is the granular record; the bank settlement is a cash-flow event. Both must be preserved.
 

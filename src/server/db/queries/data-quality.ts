@@ -55,7 +55,7 @@ export function getDataQualitySummary(
              THEN ABS(charged_amount) ELSE 0 END
          ), 0) AS unclassifiedExpenseValue
        FROM transactions
-       WHERE workspace_id = ?`
+       WHERE workspace_id = ? AND is_excluded = 0`
     )
     .get(workspaceId) as {
     totalTransactions: number;
@@ -103,6 +103,7 @@ export function getNeedsReviewTransactions(
 ): NeedsReviewTransaction[] {
   const conditions = [
     "t.workspace_id = ?",
+    "t.is_excluded = 0",
     "t.classification_status = 'needs_review'",
   ];
   const params: Array<string | number> = [workspaceId];

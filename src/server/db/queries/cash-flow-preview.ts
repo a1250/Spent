@@ -66,7 +66,7 @@ function buildTemporalFilter(
   filters: CashFlowPreviewFilters,
   alias = "t"
 ): SqlFilter {
-  const conditions = [`${alias}.workspace_id = ?`];
+  const conditions = [`${alias}.workspace_id = ?`, `${alias}.is_excluded = 0`];
   const params: Array<string | number> = [workspaceId];
 
   if (filters.fromMonth) {

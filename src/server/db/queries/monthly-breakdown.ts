@@ -105,7 +105,7 @@ export function getMonthlyBreakdown(
             AND cash_flow_type IN ${REAL_CASH}
            THEN charged_amount ELSE 0 END), 0) AS uncertainPnL
        FROM transactions
-       WHERE workspace_id = ? AND substr(date, 1, 7) = ?`
+       WHERE workspace_id = ? AND substr(date, 1, 7) = ? AND is_excluded = 0`
     )
     .get(workspaceId, resolvedMonth) as {
     operatingRevenue: number;
@@ -129,6 +129,7 @@ export function getMonthlyBreakdown(
        LEFT JOIN categories parent ON parent.id = cat.parent_id
        WHERE t.workspace_id = ?
          AND substr(t.date, 1, 7) = ?
+         AND t.is_excluded = 0
          AND t.classification_status IN ${CLASSIFIED}
          AND t.pnl_impact = 'yes'
          AND t.cash_flow_type IN ${REAL_CASH}
@@ -147,6 +148,7 @@ export function getMonthlyBreakdown(
        FROM transactions
        WHERE workspace_id = ?
          AND substr(date, 1, 7) = ?
+         AND is_excluded = 0
          AND classification_status IN ${CLASSIFIED}
          AND cash_flow_type = 'real_cash_in'
        GROUP BY financial_nature
@@ -163,6 +165,7 @@ export function getMonthlyBreakdown(
        FROM transactions
        WHERE workspace_id = ?
          AND substr(date, 1, 7) = ?
+         AND is_excluded = 0
          AND classification_status IN ${CLASSIFIED}
          AND financial_nature NOT IN ${PNL_NATURES}
          AND financial_nature != 'unknown'
@@ -192,6 +195,7 @@ export function getMonthlyBreakdown(
        FROM transactions
        WHERE workspace_id = ?
          AND substr(date, 1, 7) = ?
+         AND is_excluded = 0
        GROUP BY COALESCE(NULLIF(business_unit, ''), 'unknown')
        ORDER BY ABS(netPnL) DESC`
     )
@@ -212,6 +216,7 @@ export function getMonthlyBreakdown(
        LEFT JOIN categories cat ON cat.id = t.category_id
        WHERE t.workspace_id = ?
          AND substr(t.date, 1, 7) = ?
+         AND t.is_excluded = 0
          AND t.classification_status = 'needs_review'
        ORDER BY ABS(t.charged_amount) DESC
        LIMIT 10`

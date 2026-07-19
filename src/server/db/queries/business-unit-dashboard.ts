@@ -355,7 +355,7 @@ export function getBusinessUnitDashboard(
             AND t.financial_nature NOT IN ${INTERNAL_NATURES}
            THEN t.charged_amount ELSE 0 END), 0) AS netCashFlow
        FROM transactions t
-       WHERE t.workspace_id = ?
+       WHERE t.workspace_id = ? AND t.is_excluded = 0
        GROUP BY unitKey`
     )
     .all(workspaceId) as UnitAggregateRow[];
@@ -407,7 +407,7 @@ export function getBusinessUnitDashboard(
            THEN ABS(t.charged_amount) ELSE 0 END), 0)
            AS internalMovementTotal
        FROM transactions t
-       WHERE t.workspace_id = ?
+       WHERE t.workspace_id = ? AND t.is_excluded = 0
        GROUP BY unitKey, substr(t.date, 1, 7)
        ORDER BY month DESC`
     )
@@ -437,6 +437,7 @@ export function getBusinessUnitDashboard(
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.workspace_id = ?
+        AND t.is_excluded = 0
         AND (
           t.classification_status = 'needs_review'
           OR (

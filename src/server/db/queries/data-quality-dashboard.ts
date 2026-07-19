@@ -211,7 +211,7 @@ export function getDataQualityDashboard(
            OR pnl_impact IS NULL
          ) AS incompleteFinancialFieldsCount
        FROM transactions
-       WHERE workspace_id = ?`
+       WHERE workspace_id = ? AND is_excluded = 0`
     )
     .get(workspaceId) as {
     unknownBusinessUnitCount: number;
@@ -258,6 +258,7 @@ export function getDataQualityDashboard(
        LEFT JOIN import_rows ir ON ir.id = t.import_row_id
        LEFT JOIN import_batches ib ON ib.id = t.import_batch_id
        WHERE t.workspace_id = ?
+         AND t.is_excluded = 0
          AND (
            t.classification_status = 'needs_review'
            OR (

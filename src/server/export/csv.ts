@@ -6,7 +6,13 @@ export type CsvValue = string | number | boolean | null | undefined;
 
 export function csvEscape(value: CsvValue): string {
   if (value == null) return "";
-  const text = String(value);
+  let text = String(value);
+  // Prefix free-text values that spreadsheet apps (Excel/Sheets) would
+  // interpret as a formula, so imported bank/merchant text can never
+  // execute on open. Numbers/booleans are never ambiguous, so leave them as-is.
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }

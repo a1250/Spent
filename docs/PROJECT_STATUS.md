@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-21
+Last updated: 2026-07-19
 
 ## Branch
 
@@ -8,25 +8,66 @@ Last updated: 2026-06-21
 
 ## Latest pushed commit
 
-`27331d5` - docs: add future optional work section to NEXT_TASK.md
+`b61e92f` - docs: record optional integration onboarding rule
 
-## Verified baseline (as of f9bff71)
+## Verified baseline (as of this session, live DB untouched)
 
 | Metric | Count |
 |--------|-------|
-| transactions | 1095 |
-| import_rows | 1924 |
+| transactions | 1188 |
+| import_rows | 2018 |
 | categories | 55 |
-| import_batches | 8 |
+| import_batches | 9 |
 | classification_rules (active) | 652 |
 | manually_approved | 704 |
-| auto_classified | 10 |
-| needs_review | 381 |
+| auto_classified | 51 |
+| needs_review | 433 |
 | business_units | 12 |
 | recurring_patterns | 0 |
 | voided transactions | 0 |
 
+Note: this baseline grows over time from real bank syncs. Don't hardcode it into
+QA script assertions as a fixed constant (`qa-learning-policy.sh` did this and
+had to be fixed to derive its baseline dynamically) — see the V1 Self-Test
+milestone below.
+
 ## Completed milestones
+
+### V1 Self-Test and Acceptance Audit (local, pending commit/push approval)
+
+Full "act like a real user" walkthrough of entry/navigation, import, import
+review, transactions, reports/drilldowns, forecast, exports, backups, and a
+genuinely fresh (non-copied) workspace DB, plus the full automated QA suite
+run sequentially. Live DB was never mutated; all mutation tests ran against
+sandbox copies.
+
+Found and fixed:
+- **P0**: `is_excluded` (void) was not filtered in 6 report/dashboard query
+  modules (`pnl-preview.ts`, `monthly-breakdown.ts`, `cash-flow-preview.ts`,
+  `business-unit-dashboard.ts`, `data-quality-dashboard.ts`, `data-quality.ts`),
+  even though the transactions list/export already filtered it correctly.
+  Voided transactions kept counting in P&L, Cash Flow, Monthly Breakdown,
+  Business Unit, and Data Quality totals. Fixed by adding `is_excluded = 0`
+  to every relevant WHERE clause; verified the fix shifts totals by exactly
+  the voided transaction's amount and unvoid restores them. Live voided count
+  was 0 throughout, so this never corrupted a real report — it was latent.
+- **P2**: CSV export formula injection guard added to `csvEscape` (string
+  values starting with `=+-@`/tab/CR get a leading-apostrophe guard; numeric
+  amounts are untouched).
+- **QA script fix**: `qa-learning-policy.sh` asserted against a stale
+  hardcoded 1095-tx baseline; rewrote it to assert only "unchanged
+  before/after the sandbox run" against a freshly-read live baseline.
+
+Deferred (already tracked, unchanged by this session, needs explicit approval):
+- BU seed cleanup (workspace-specific slugs on fresh DBs) — requires a live
+  data migration, out of scope for a "low-risk and localized" fix.
+- `ENVIRONMENT_FALLBACK` stderr noise on cold `next start` — internal Next.js
+  16 SSR chunk, not reproducible from app source, requests still return 200.
+
+QA: tsc PASS, focused eslint PASS, build PASS, v1-entry-navigation PASS,
+import-review-classification 7/7 PASS, backup-restore 8/8 PASS, forecast
+detection 34/34 PASS, cross-adapter dedup 8/8 PASS, learning-policy 36/36 PASS
+(post-fix). Live DB integrity/FK/hash unchanged throughout.
 
 ### P1 V1 Import Review Classification Fix (local, pending commit)
 

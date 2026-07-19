@@ -1,5 +1,87 @@
 # Next Task
 
+## V1 Self-Test and Acceptance Audit
+
+Status: COMPLETE (local, pending commit/push approval)
+
+Full daily-use walkthrough of entry/navigation, import, import review, transactions,
+reports/drilldowns, forecast, exports, backups, and a fresh workspace. Ran the full
+automated QA suite (tsc, focused eslint, build, v1 entry navigation, import review
+classification, backup/restore, forecast detection, cross-adapter dedup, learning
+policy) sequentially against sandbox copies. Live DB was never mutated during
+testing; all mutation tests ran against `qa-sandbox.sh` copies.
+
+### P0 fixed: voided transactions leaked into report totals
+
+`is_excluded = 1` (void) was already respected by `queryTransactions` (the
+transactions list and CSV export), but none of the 5 dedicated report query
+modules filtered it: `pnl-preview.ts`, `monthly-breakdown.ts`,
+`cash-flow-preview.ts`, `business-unit-dashboard.ts`, `data-quality-dashboard.ts`,
+plus `data-quality.ts` (review page coverage banner + needs-review worklist).
+A voided transaction disappeared from the dashboard and transaction list but kept
+counting in P&L, Cash Flow, Monthly Breakdown, Business Unit, and Data Quality
+totals — wrong accounting totals, contradicting the documented void behavior from
+Phase 3A. Added `is_excluded = 0` to every relevant WHERE clause in those 6 files.
+Verified live in a sandbox: voiding a transaction now shifts P&L/monthly/BU
+operatingExpenses by exactly the transaction's amount, and unvoid restores it.
+Live `voided transactions = 0`, so this bug never affected the live baseline —
+it was latent, not yet triggered.
+
+### P2 fixed: CSV export formula injection guard
+
+`csvEscape` in `src/server/export/csv.ts` did not guard against spreadsheet
+formula injection (a description/counterparty starting with `=`, `+`, `-`, `@`,
+tab, or CR could be interpreted as a formula by Excel/Sheets on open). Added a
+leading-apostrophe guard for string values only (numeric amounts are untouched,
+so negative amounts still export correctly). Standard OWASP-recommended,
+low-risk, localized fix.
+
+### QA script fixed: `qa-learning-policy.sh` stale hardcoded baseline
+
+The script asserted live DB counts against a fixed baseline from the
+Phase-2U.9 era (1095 tx / 381 needs_review / 10 auto_classified), which now
+fails every run as real bank syncs grow the live DB. Rewrote `count_check` to
+assert only that live counts are unchanged before/after the sandbox test run
+(the script's actual job), not that they equal a stale constant. Now 36/36 pass
+against the current real baseline (1188 tx / 433 needs_review / 51 auto_classified).
+
+### Deferred (no code change, already tracked, needs explicit approval)
+
+- **BU seed cleanup** (pre-existing, see below): confirmed still present on
+  a genuinely fresh (non-copied) DB — new workspaces seed `umino, paseo,
+  topsoccer, playground, mytiv, cctv360, gazebo, advance` alongside the 4
+  generic units. Requires a live data migration for existing workspaces, so
+  it stays gated behind explicit user approval, not auto-fixed here.
+- **`ENVIRONMENT_FALLBACK` log noise** (P3, cosmetic): an internal Next.js
+  16 SSR chunk logs `Error: ENVIRONMENT_FALLBACK` to stderr on the first
+  request after a cold `next start`, in every sandbox script run. Requests
+  still return 200 and behave correctly; not reproducible from our own
+  source (`grep` for it returns nothing under `src/`). Left alone as
+  framework-internal noise, not a product defect.
+
+Acceptance/QA (this session):
+- `npx tsc --noEmit` PASS
+- Focused eslint on all touched files PASS (0 errors/warnings)
+- `npm run build` PASS (only pre-existing middleware→proxy deprecation notice)
+- `scripts/test-v1-entry-navigation.sh` PASS
+- `scripts/test-import-review-classification.sh` PASS (7/7)
+- `scripts/test-backup-restore.sh` PASS (8/8)
+- `npx tsx scripts/test-forecast-detection.ts` PASS (34/34)
+- `npx tsx scripts/verify-cross-adapter-dedup.ts` PASS (8/8)
+- `scripts/qa-learning-policy.sh` PASS (36/36, post-fix)
+- Live DB integrity_check ok, foreign_key_check clean, hash unchanged
+  throughout all sandbox test runs
+- Live baseline confirmed: 1188 transactions, 2018 import_rows, 9 import_batches,
+  55 categories, 652 active rules, 704 manually_approved, 51 auto_classified,
+  433 needs_review, 12 business_units, 0 recurring_patterns, 0 voided
+
+Recommended next:
+- Review and commit locally if approved.
+- Push only after explicit user approval.
+- No Phase 2 package is approved automatically.
+
+---
+
 ## P1 Import Review Classification Fix
 
 Status: COMPLETE (local, pending commit/push approval)

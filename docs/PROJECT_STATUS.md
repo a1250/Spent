@@ -28,6 +28,30 @@ Last updated: 2026-06-21
 
 ## Completed milestones
 
+### P1 V1 Import Review Classification Fix (local, pending commit)
+
+- Import Review rows now expose a visible, touch-accessible `Edit / Classify`
+  action. Category editing no longer depends on hidden row-click behavior.
+- Each pending import row shows the current category, or `No category / ללא קטגוריה`
+  when unset. The category pill is also clickable and opens the same editor.
+- Added a searchable active-category picker. Archived categories are excluded by default.
+- Added explicit Save / Apply and Cancel actions. Cancel closes the editor without mutation.
+- Added row checkboxes, select-all-visible, and bulk Edit / Classify. Bulk classification
+  applies only to selected rows and uses row-only patches; it does not create learning rules.
+- The action and checkbox columns are sticky in the RTL import table so tablet-width users
+  keep the primary action visible while horizontally scrolling.
+
+Durable rule:
+- Import Review must always expose an explicit, touch-accessible Edit/Classify action for
+  every pending row. Category selection may not depend on hidden row-click behavior.
+
+Acceptance/QA:
+- `scripts/test-import-review-classification.sh "$(./scripts/qa-sandbox.sh)"` PASS.
+- Sandbox verified: no-category row can be classified, selected category is visible after
+  save, Cancel is a no-op, archived categories are excluded, source linkage is preserved,
+  no learning rule is created automatically, and bulk edit affects selected rows only.
+- No live DB mutation was performed.
+
 ### P1 V1 Acceptance Fix - Optional integration onboarding (local, pending commit)
 
 - Removed forced `/setup` redirects from the dashboard, transactions, budget, and settings

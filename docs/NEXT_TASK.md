@@ -1,5 +1,36 @@
 # Next Task
 
+## P1 Import Review Classification Fix
+
+Status: COMPLETE (local, pending commit/push approval)
+
+Delivered:
+- Import Review pending rows now have an explicit `Edit / Classify` action.
+- Category display shows the current category or `No category / ללא קטגוריה` when empty.
+- Clicking the category pill opens the classification editor.
+- The editor provides searchable active-category selection, business unit, financial nature,
+  cash-flow type, P&L impact, and classification status.
+- Save / Apply is explicit; Cancel leaves the row unchanged.
+- Row checkboxes, select-all-visible, and bulk Edit / Classify were added.
+- Bulk classification affects selected rows only and does not create learning rules.
+- RTL/tablet usability improved with sticky checkbox/action columns and touch-sized controls.
+
+Durable rule:
+- Import Review must always expose an explicit, touch-accessible Edit/Classify action for
+  every pending row. Category selection may not depend on hidden row-click behavior.
+
+QA:
+- `scripts/test-import-review-classification.sh "$(./scripts/qa-sandbox.sh)"` PASS.
+- `npx tsc --noEmit` PASS.
+- Live DB was not mutated.
+
+Recommended next:
+- Run full regression QA, then commit locally if approved.
+- Push only after explicit user approval.
+- Do not begin another package automatically.
+
+---
+
 ## P1 V1 Acceptance Fix - Optional integration onboarding
 
 Status: COMPLETE (local, pending commit/push approval)

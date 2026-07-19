@@ -10,10 +10,13 @@ import {
   ArrowUpRight,
   Ban,
   BarChart3,
+  CheckSquare,
   Clock,
   Copy,
+  Edit3,
   ListChecks,
   PlusCircle,
+  Search,
   ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
@@ -29,6 +32,24 @@ import type { ReviewFilters } from "./review-filter-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
   CashFlowTypeBadge,
   ClassificationStatusBadge,
   ImportRowStatusBadge,
@@ -41,12 +62,18 @@ import {
   getDataQualitySummary,
   getImportRowsNeedingAction,
   getNeedsReviewTransactions,
+  listBusinessUnits,
   patchImportRow,
   type ImportRowPatch,
 } from "@/lib/api";
 import type {
+  BusinessUnit,
+  CashFlowType,
+  Category,
+  FinancialNature,
   ImportRowActionItem,
   NeedsReviewTransaction,
+  PnlImpact,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +84,39 @@ const moneyFormatter = new Intl.NumberFormat("he-IL", {
   currency: "ILS",
   minimumFractionDigits: 2,
 });
+
+const FINANCIAL_NATURE_LABELS: Record<FinancialNature, string> = {
+  operating_income: "הכנסה תפעולית",
+  operating_expense: "הוצאה תפעולית",
+  credit_card_payment: "תשלום כרטיס אשראי",
+  refund: "זיכוי / החזר",
+  working_capital: "הון חוזר",
+  internal_transfer: "העברה פנימית",
+  owner_deposit: "הפקדת בעלים",
+  owner_draw: "משיכת בעלים",
+  investment: "השקעה",
+  receivable_collection: "גביית חוב",
+  payable_payment: "תשלום חוב",
+  loan_received: "קבלת הלוואה",
+  loan_repayment: "פירעון הלוואה",
+  tax: "מס",
+  unknown: "לא ידוע",
+};
+
+const CASH_FLOW_LABELS: Record<CashFlowType, string> = {
+  real_cash_in: "תזרים נכנס",
+  real_cash_out: "תזרים יוצא",
+  internal_transfer: "העברה פנימית",
+  non_cash: "ללא תנועת מזומן",
+  pending: "ממתין",
+  unknown: "לא ידוע",
+};
+
+const PNL_IMPACT_LABELS: Record<PnlImpact, string> = {
+  yes: "כן",
+  no: "לא",
+  maybe: "אולי",
+};
 
 type SortField = "amount" | "date" | "counterparty" | "pending";
 type ViewMode = "list" | "groups";
@@ -381,6 +441,7 @@ export function ReviewPage() {
           <ImportRowsActionTable
             rows={importRowsQuery.data ?? []}
             loading={importRowsQuery.isLoading}
+            categories={categoriesQuery.data ?? []}
             onChanged={refreshQualityData}
           />
         </section>
@@ -651,12 +712,18 @@ function TransactionsReviewTable({
 function ImportRowsActionTable({
   rows,
   loading,
+  categories,
   onChanged,
 }: {
   rows: ImportRowActionItem[];
   loading: boolean;
+  categories: Category[];
   onChanged: () => void;
 }) {
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [editingRows, setEditingRows] = useState<ImportRowActionItem[] | null>(
+    null
+  );
   const mutation = useMutation({
     mutationFn: ({
       row,
@@ -679,6 +746,67 @@ function ImportRowsActionTable({
       toast.error(error instanceof Error ? error.message : "הפעולה נכשלה");
     },
   });
+  const classifyMutation = useMutation({
+    mutationFn: async ({
+      targetRows,
+      patch,
+    }: {
+      targetRows: ImportRowActionItem[];
+      patch: ImportRowPatch;
+    }) => {
+      const results = [];
+      for (const row of targetRows) {
+        results.push(await patchImportRow(row.batchId, row.id, patch));
+      }
+      return results;
+    },
+    onSuccess: (_result, { targetRows, patch }) => {
+      const count = targetRows.length;
+      toast.success(
+        patch.decision === "keep_review"
+          ? `הסיווג נשמר ונשאר לבדיקה (${count})`
+          : `הסיווג נשמר (${count})`
+      );
+      setEditingRows(null);
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const row of targetRows) next.delete(row.id);
+        return next;
+      });
+      onChanged();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "שמירת הסיווג נכשלה");
+    },
+  });
+
+  const selectedRows = useMemo(
+    () => rows.filter((row) => selectedIds.has(row.id)),
+    [rows, selectedIds]
+  );
+  const allVisibleSelected =
+    rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+
+  function toggleRow(rowId: number) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        for (const row of rows) next.delete(row.id);
+      } else {
+        for (const row of rows) next.add(row.id);
+      }
+      return next;
+    });
+  }
 
   if (loading) {
     return <TableState>טוען שורות ייבוא...</TableState>;
@@ -688,10 +816,56 @@ function ImportRowsActionTable({
   }
 
   return (
-    <div className="max-h-[620px] overflow-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[1780px] text-sm">
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2">
+        <div className="text-sm text-muted-foreground">
+          {selectedRows.length > 0
+            ? `${selectedRows.length} שורות נבחרו`
+            : "בחר שורות כדי לבצע סיווג מרובה"}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={toggleAllVisible}
+            className="min-h-9 gap-1.5"
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            {allVisibleSelected ? "בטל בחירה" : "בחר את כל המוצגות"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={selectedRows.length === 0}
+            onClick={() => setEditingRows(selectedRows)}
+            className="min-h-9 gap-1.5"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+            Bulk Edit / Classify
+          </Button>
+        </div>
+      </div>
+
+      <div
+        className="max-h-[620px] overflow-auto rounded-xl border bg-card"
+        data-import-review-table
+      >
+      <table className="w-full min-w-[1500px] text-sm">
         <thead className="sticky top-0 z-[1] bg-muted/95 text-xs text-muted-foreground backdrop-blur">
           <tr className="border-b">
+            <th className="sticky start-0 z-[3] w-12 bg-muted/95 px-3 py-2 text-center font-medium">
+              <input
+                type="checkbox"
+                aria-label="בחר את כל שורות הייבוא המוצגות"
+                checked={allVisibleSelected}
+                onChange={toggleAllVisible}
+                className="h-4 w-4 rounded border-input"
+              />
+            </th>
+            <th className="sticky start-12 z-[3] bg-muted/95 px-3 py-2 text-start font-medium">
+              פעולה
+            </th>
             <th className="px-3 py-2 text-start font-medium">שורה</th>
             <th className="px-3 py-2 text-start font-medium">מקור</th>
             <th className="px-3 py-2 text-start font-medium">תאריכים</th>
@@ -701,7 +875,7 @@ function ImportRowsActionTable({
             <th className="px-3 py-2 text-start font-medium">Audit בלבד</th>
             <th className="px-3 py-2 text-start font-medium">סיווג</th>
             <th className="px-3 py-2 text-start font-medium">Rule intelligence</th>
-            <th className="px-3 py-2 text-start font-medium">פעולות</th>
+            <th className="px-3 py-2 text-start font-medium">פעולות נוספות</th>
           </tr>
         </thead>
         <tbody>
@@ -713,6 +887,26 @@ function ImportRowsActionTable({
                 key={row.id}
                 className="border-b last:border-0 hover:bg-muted/20"
               >
+                <td className="sticky start-0 z-[2] bg-card px-3 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label={`בחר שורת ייבוא ${row.id}`}
+                    checked={selectedIds.has(row.id)}
+                    onChange={() => toggleRow(row.id)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                </td>
+                <td className="sticky start-12 z-[2] bg-card px-3 py-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setEditingRows([row])}
+                    className="min-h-9 whitespace-nowrap gap-1.5"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    Edit / Classify
+                  </Button>
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">
                   #{row.id}
                   <div className="text-[10px] text-muted-foreground">
@@ -775,9 +969,27 @@ function ImportRowsActionTable({
                   />
                 </td>
                 <td className="max-w-[250px] px-3 py-2">
-                  <div className="font-medium">
-                    {row.categoryName ?? "ללא קטגוריה"}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRows([row])}
+                    className={cn(
+                      "inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      row.categoryName
+                        ? "bg-background"
+                        : "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                    )}
+                    aria-label={`Edit category for import row ${row.id}`}
+                  >
+                    {row.categoryColor && (
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: row.categoryColor }}
+                      />
+                    )}
+                    <span className="truncate">
+                      {row.categoryName ?? "No category / ללא קטגוריה"}
+                    </span>
+                  </button>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {row.financialNature.replaceAll("_", " ")} ·{" "}
                     {row.businessUnit ?? "unknown"}
@@ -867,6 +1079,350 @@ function ImportRowsActionTable({
           })}
         </tbody>
       </table>
+      </div>
+
+      {editingRows && (
+        <ImportRowClassificationDialog
+          rows={editingRows}
+          categories={categories}
+          saving={classifyMutation.isPending}
+          onCancel={() => setEditingRows(null)}
+          onSave={(patch) =>
+            classifyMutation.mutate({
+              targetRows: editingRows,
+              patch,
+            })
+          }
+        />
+      )}
+    </>
+  );
+}
+
+function ImportRowClassificationDialog({
+  rows,
+  categories,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  rows: ImportRowActionItem[];
+  categories: Category[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (patch: ImportRowPatch) => void;
+}) {
+  const first = rows[0];
+  const activeLeafCategories = useMemo(
+    () =>
+      categories
+        .filter((category) => category.parentId !== null && !category.isArchived)
+        .sort((a, b) => a.name.localeCompare(b.name, "he")),
+    [categories]
+  );
+  const parentById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories]
+  );
+  const initialCategoryId =
+    first.categoryId != null &&
+    activeLeafCategories.some((category) => category.id === first.categoryId)
+      ? String(first.categoryId)
+      : "none";
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [financialNature, setFinancialNature] = useState<FinancialNature>(
+    first.financialNature
+  );
+  const [cashFlowType, setCashFlowType] = useState<CashFlowType>(
+    first.cashFlowType
+  );
+  const [pnlImpact, setPnlImpact] = useState<PnlImpact>(first.pnlImpact);
+  const [businessUnit, setBusinessUnit] = useState<BusinessUnit | "none">(
+    first.businessUnit ?? "none"
+  );
+  const [decision, setDecision] = useState<"approve" | "keep_review">(
+    first.classificationStatus === "needs_review" ? "keep_review" : "approve"
+  );
+  const [otherBusinessConfirmed, setOtherBusinessConfirmed] = useState(false);
+  const { data: businessUnits = [] } = useQuery({
+    queryKey: ["business-units"],
+    queryFn: () => listBusinessUnits(),
+  });
+  const filteredCategories = useMemo(() => {
+    const term = categorySearch.trim().toLowerCase();
+    if (!term) return activeLeafCategories;
+    return activeLeafCategories.filter((category) => {
+      const parent = category.parentId
+        ? parentById.get(category.parentId)
+        : null;
+      return `${parent?.name ?? ""} ${category.name}`
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [activeLeafCategories, categorySearch, parentById]);
+  const selectedCategory =
+    categoryId === "none"
+      ? null
+      : activeLeafCategories.find((category) => category.id === Number(categoryId)) ??
+        null;
+  const currentCategoryLabel =
+    rows.length === 1
+      ? first.categoryName ?? "No category / ללא קטגוריה"
+      : `${rows.length} selected rows`;
+
+  function save() {
+    onSave({
+      categoryId: categoryId === "none" ? null : Number(categoryId),
+      financialNature,
+      cashFlowType,
+      pnlImpact,
+      businessUnit: businessUnit === "none" ? null : businessUnit,
+      decision,
+      applyScope: "row",
+      saveAsRule: false,
+      otherBusinessConfirmed:
+        decision === "approve" && businessUnit === "other"
+          ? otherBusinessConfirmed
+          : false,
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent
+        className="max-h-[92vh] max-w-[min(760px,calc(100vw-2rem))] overflow-hidden p-0"
+        dir="rtl"
+      >
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="font-serif text-xl font-normal">
+            Edit / Classify import row
+          </DialogTitle>
+          <DialogDescription>
+            {rows.length === 1
+              ? `Import row #${first.id} · ${first.counterparty ?? first.description ?? "No description"}`
+              : `Bulk classification for ${rows.length} selected import rows`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid max-h-[calc(92vh-9rem)] gap-4 overflow-y-auto px-5 py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.9fr)]">
+          <section className="space-y-3">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <div className="text-xs text-muted-foreground">Current category</div>
+              <div className="mt-1 font-medium">{currentCategoryLabel}</div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="import-row-category-search">
+                Search category
+              </Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="import-row-category-search"
+                  value={categorySearch}
+                  onChange={(event) => setCategorySearch(event.target.value)}
+                  placeholder="Search active categories..."
+                  className="min-h-10 ps-9"
+                />
+              </div>
+            </div>
+
+            <div
+              className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2"
+              role="listbox"
+              aria-label="Category options"
+            >
+              <CategoryOptionButton
+                selected={categoryId === "none"}
+                onClick={() => setCategoryId("none")}
+                label="No category / ללא קטגוריה"
+              />
+              {filteredCategories.map((category) => {
+                const parent = category.parentId
+                  ? parentById.get(category.parentId)
+                  : null;
+                return (
+                  <CategoryOptionButton
+                    key={category.id}
+                    selected={categoryId === String(category.id)}
+                    onClick={() => setCategoryId(String(category.id))}
+                    label={category.name}
+                    meta={parent?.name}
+                    color={category.color}
+                  />
+                );
+              })}
+              {filteredCategories.length === 0 && (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No active categories match this search.
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Archived categories are excluded from this picker by default.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Selected category</Label>
+              <div className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm">
+                {selectedCategory?.color && (
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: selectedCategory.color }}
+                  />
+                )}
+                <span className="truncate">
+                  {selectedCategory?.name ?? "No category / ללא קטגוריה"}
+                </span>
+              </div>
+            </div>
+
+            <SelectField
+              label="Classification status"
+              value={decision}
+              onValueChange={(value) =>
+                setDecision(value as "approve" | "keep_review")
+              }
+              options={[
+                ["approve", "Manually approved"],
+                ["keep_review", "Keep in review"],
+              ]}
+            />
+            <SelectField
+              label="Financial nature"
+              value={financialNature}
+              onValueChange={(value) =>
+                setFinancialNature(value as FinancialNature)
+              }
+              options={Object.entries(FINANCIAL_NATURE_LABELS)}
+            />
+            <SelectField
+              label="Cash flow type"
+              value={cashFlowType}
+              onValueChange={(value) => setCashFlowType(value as CashFlowType)}
+              options={Object.entries(CASH_FLOW_LABELS)}
+            />
+            <SelectField
+              label="P&L impact"
+              value={pnlImpact}
+              onValueChange={(value) => setPnlImpact(value as PnlImpact)}
+              options={Object.entries(PNL_IMPACT_LABELS)}
+            />
+            <SelectField
+              label="Business unit"
+              value={businessUnit}
+              onValueChange={(value) =>
+                setBusinessUnit(value as BusinessUnit | "none")
+              }
+              options={[
+                ["none", "Not assigned"],
+                ...businessUnits.map((unit) => [unit.slug, unit.label] as const),
+              ]}
+            />
+            {businessUnit === "other" && decision === "approve" && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                <Label htmlFor="import-row-other-business-confirm">
+                  Confirm this is general business activity
+                </Label>
+                <Switch
+                  id="import-row-other-business-confirm"
+                  checked={otherBusinessConfirmed}
+                  onCheckedChange={setOtherBusinessConfirmed}
+                />
+              </div>
+            )}
+          </section>
+        </div>
+
+        <DialogFooter className="px-5 py-4">
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving..." : "Save / Apply"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CategoryOptionButton({
+  selected,
+  onClick,
+  label,
+  meta,
+  color,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  label: string;
+  meta?: string;
+  color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={onClick}
+      className={cn(
+        "flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-start text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        selected && "bg-primary/10 text-primary"
+      )}
+    >
+      {color && (
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{label}</span>
+        {meta && (
+          <span className="block truncate text-xs text-muted-foreground">
+            {meta}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onValueChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: readonly (readonly [string, string])[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Select
+        value={value}
+        onValueChange={(nextValue) => {
+          if (nextValue) onValueChange(nextValue);
+        }}
+      >
+        <SelectTrigger className="h-10 w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="start" className="max-h-72">
+          {options.map(([optionValue, optionLabel]) => (
+            <SelectItem key={optionValue} value={optionValue}>
+              {optionLabel}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
